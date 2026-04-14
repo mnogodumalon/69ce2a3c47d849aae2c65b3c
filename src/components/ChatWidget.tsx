@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type ReactElement } from 'react';
-import { IconSparkles, IconX, IconSend, IconPaperclip, IconLoader2, IconCopy, IconCheck, IconFileTypePdf, IconMaximize, IconMinimize } from '@tabler/icons-react';
+import { IconSparkles, IconX, IconSend, IconPaperclip, IconLoader2, IconCopy, IconCheck, IconFileTypePdf } from '@tabler/icons-react';
 import { fileToDataUri } from '@/lib/ai';
 import { useActions } from '@/context/ActionsContext';
 
@@ -331,7 +331,6 @@ export default function ChatWidget() {
   const [input, setInput] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -344,10 +343,8 @@ export default function ChatWidget() {
 
   useEffect(() => {
     if (chatOpen && inputRef.current) {
-      // Delay focus to avoid iOS zoom glitch on panel open
-      setTimeout(() => inputRef.current?.focus(), 300);
+      inputRef.current.focus();
     }
-    if (!chatOpen) setIsFullscreen(false);
   }, [chatOpen]);
 
   const handleSend = useCallback(() => {
@@ -359,8 +356,6 @@ export default function ChatWidget() {
     setInput('');
     setImage(null);
     setFileName(null);
-    // Dismiss keyboard on mobile after send
-    inputRef.current?.blur();
   }, [input, image, sendMessage]);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -403,34 +398,21 @@ export default function ChatWidget() {
 
       {/* Chat panel */}
       {chatOpen && (
-        <div className={`fixed z-50 bg-card shadow-2xl flex flex-col overflow-hidden transition-all duration-200 ${
-          isFullscreen
-            ? 'inset-0 rounded-none'
-            : 'left-0 right-0 bottom-0 top-[40%] rounded-t-2xl sm:inset-auto sm:bottom-20 sm:right-5 sm:left-auto sm:top-auto sm:w-[480px] sm:h-[640px] sm:border sm:border-border sm:rounded-2xl'
-        }`}>
+        <div className="fixed z-50 inset-3 bottom-[4.5rem] sm:inset-auto sm:bottom-20 sm:right-5 sm:w-[480px] sm:h-[640px] bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card shrink-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <IconSparkles size={12} className="text-primary" />
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                <IconSparkles size={14} className="text-primary" />
               </div>
-              <span className="text-sm font-semibold text-foreground truncate">Assistent</span>
+              <span className="text-sm font-semibold text-foreground">Assistent</span>
             </div>
-            <div className="flex items-center gap-0.5 shrink-0">
-              <button
-                onClick={() => setIsFullscreen(!isFullscreen)}
-                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                title={isFullscreen ? 'Verkleinern' : 'Vollbild'}
-              >
-                {isFullscreen ? <IconMinimize size={14} /> : <IconMaximize size={14} />}
-              </button>
-              <button
-                onClick={() => setChatOpen(false)}
-                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              >
-                <IconX size={14} />
-              </button>
-            </div>
+            <button
+              onClick={() => setChatOpen(false)}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <IconX size={14} />
+            </button>
           </div>
 
           {/* Messages */}
@@ -507,8 +489,8 @@ export default function ChatWidget() {
           )}
 
           {/* Input */}
-          <div className="px-2.5 py-2 border-t border-border bg-card safe-area-pb">
-            <div className="flex items-end gap-1.5">
+          <div className="px-3 py-2.5 border-t border-border bg-card">
+            <div className="flex items-end gap-2">
               <button
                 onClick={() => fileRef.current?.click()}
                 className="shrink-0 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -530,8 +512,7 @@ export default function ChatWidget() {
                 onKeyDown={handleKeyDown}
                 placeholder="Frage stellen oder Bild hochladen..."
                 rows={1}
-                style={{ fieldSizing: 'content', maxHeight: '4.5rem' } as React.CSSProperties}
-                className="flex-1 resize-none bg-muted rounded-xl px-3 py-2 text-base sm:text-sm outline-none border-0 placeholder:text-muted-foreground/60 overflow-y-auto"
+                className="flex-1 resize-none bg-muted rounded-xl px-3 py-2 text-sm outline-none border-0 placeholder:text-muted-foreground/60 max-h-24 overflow-y-auto"
               />
               <button
                 onClick={handleSend}

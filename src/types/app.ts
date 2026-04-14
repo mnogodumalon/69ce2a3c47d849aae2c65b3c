@@ -27,35 +27,6 @@ export interface Unternehmen {
   };
 }
 
-export interface Kennzahlen {
-  record_id: string;
-  createdat: string;
-  updatedat: string | null;
-  fields: {
-    unternehmen_kpi_ref?: string; // applookup -> URL zu 'Unternehmen' Record
-    berichtsjahr?: number;
-    standort?: string;
-    gesamtmenge_kg?: number;
-    menge_kunststoff_kg?: number;
-    menge_papier_pappe_kg?: number;
-    menge_glas_kg?: number;
-    menge_metall_kg?: number;
-    menge_verbund_kg?: number;
-    rezyklatanteil_gesamt_prozent?: number;
-    rezyklatanteil_kunststoff_prozent?: number;
-    rezyklatanteil_papier_prozent?: number;
-    rezyklatanteil_glas_prozent?: number;
-    rezyklatanteil_metall_prozent?: number;
-    mehrwegquote_prozent?: number;
-    recyclingfaehigkeitsquote_prozent?: number;
-    anzahl_verpackungstypen?: number;
-    anzahl_konform?: number;
-    anzahl_kritisch?: number;
-    anzahl_nicht_konform?: number;
-    kpi_hinweise?: string;
-  };
-}
-
 export interface Verpackungstypen {
   record_id: string;
   createdat: string;
@@ -127,12 +98,41 @@ export interface Regelstatus {
   };
 }
 
+export interface Kennzahlen {
+  record_id: string;
+  createdat: string;
+  updatedat: string | null;
+  fields: {
+    unternehmen_kpi_ref?: string; // applookup -> URL zu 'Unternehmen' Record
+    berichtsjahr?: number;
+    standort?: string;
+    gesamtmenge_kg?: number;
+    menge_kunststoff_kg?: number;
+    menge_papier_pappe_kg?: number;
+    menge_glas_kg?: number;
+    menge_metall_kg?: number;
+    menge_verbund_kg?: number;
+    rezyklatanteil_gesamt_prozent?: number;
+    rezyklatanteil_kunststoff_prozent?: number;
+    rezyklatanteil_papier_prozent?: number;
+    rezyklatanteil_glas_prozent?: number;
+    rezyklatanteil_metall_prozent?: number;
+    mehrwegquote_prozent?: number;
+    recyclingfaehigkeitsquote_prozent?: number;
+    anzahl_verpackungstypen?: number;
+    anzahl_konform?: number;
+    anzahl_kritisch?: number;
+    anzahl_nicht_konform?: number;
+    kpi_hinweise?: string;
+  };
+}
+
 export const APP_IDS = {
   UNTERNEHMEN: '69ce2a10b74844016addd82e',
-  KENNZAHLEN: '69ce2a19555564c40eccb02c',
   VERPACKUNGSTYPEN: '69ce2a16a11c5c94e64a8724',
   NACHWEISE: '69ce2a186fb9551311abbd7f',
   REGELSTATUS: '69ce2a18409773a38eb18808',
+  KENNZAHLEN: '69ce2a19555564c40eccb02c',
 } as const;
 
 
@@ -170,29 +170,6 @@ export const FIELD_TYPES: Record<string, Record<string, string>> = {
     'verantwortlich_nachname': 'string/text',
     'verantwortlich_funktion': 'string/text',
     'verantwortlich_email': 'string/email',
-  },
-  'kennzahlen': {
-    'unternehmen_kpi_ref': 'applookup/select',
-    'berichtsjahr': 'number',
-    'standort': 'string/text',
-    'gesamtmenge_kg': 'number',
-    'menge_kunststoff_kg': 'number',
-    'menge_papier_pappe_kg': 'number',
-    'menge_glas_kg': 'number',
-    'menge_metall_kg': 'number',
-    'menge_verbund_kg': 'number',
-    'rezyklatanteil_gesamt_prozent': 'number',
-    'rezyklatanteil_kunststoff_prozent': 'number',
-    'rezyklatanteil_papier_prozent': 'number',
-    'rezyklatanteil_glas_prozent': 'number',
-    'rezyklatanteil_metall_prozent': 'number',
-    'mehrwegquote_prozent': 'number',
-    'recyclingfaehigkeitsquote_prozent': 'number',
-    'anzahl_verpackungstypen': 'number',
-    'anzahl_konform': 'number',
-    'anzahl_kritisch': 'number',
-    'anzahl_nicht_konform': 'number',
-    'kpi_hinweise': 'string/textarea',
   },
   'verpackungstypen': {
     'unternehmen_ref': 'applookup/select',
@@ -247,6 +224,29 @@ export const FIELD_TYPES: Record<string, Record<string, string>> = {
     'bewerter_nachname': 'string/text',
     'bewerter_abteilung': 'string/text',
   },
+  'kennzahlen': {
+    'unternehmen_kpi_ref': 'applookup/select',
+    'berichtsjahr': 'number',
+    'standort': 'string/text',
+    'gesamtmenge_kg': 'number',
+    'menge_kunststoff_kg': 'number',
+    'menge_papier_pappe_kg': 'number',
+    'menge_glas_kg': 'number',
+    'menge_metall_kg': 'number',
+    'menge_verbund_kg': 'number',
+    'rezyklatanteil_gesamt_prozent': 'number',
+    'rezyklatanteil_kunststoff_prozent': 'number',
+    'rezyklatanteil_papier_prozent': 'number',
+    'rezyklatanteil_glas_prozent': 'number',
+    'rezyklatanteil_metall_prozent': 'number',
+    'mehrwegquote_prozent': 'number',
+    'recyclingfaehigkeitsquote_prozent': 'number',
+    'anzahl_verpackungstypen': 'number',
+    'anzahl_konform': 'number',
+    'anzahl_kritisch': 'number',
+    'anzahl_nicht_konform': 'number',
+    'kpi_hinweise': 'string/textarea',
+  },
 };
 
 type StripLookup<T> = {
@@ -257,7 +257,7 @@ type StripLookup<T> = {
 
 // Helper Types for creating new records (lookup fields as plain strings for API)
 export type CreateUnternehmen = StripLookup<Unternehmen['fields']>;
-export type CreateKennzahlen = StripLookup<Kennzahlen['fields']>;
 export type CreateVerpackungstypen = StripLookup<Verpackungstypen['fields']>;
 export type CreateNachweise = StripLookup<Nachweise['fields']>;
 export type CreateRegelstatus = StripLookup<Regelstatus['fields']>;
+export type CreateKennzahlen = StripLookup<Kennzahlen['fields']>;

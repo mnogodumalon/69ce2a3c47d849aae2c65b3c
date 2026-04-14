@@ -178,7 +178,7 @@ function ActionWidget({ action, files, onRun, onShowCode, onDelete, onDownload, 
   };
 
   return (
-    <div className="min-w-0 rounded-xl border bg-card shadow-sm overflow-hidden">
+    <div className="rounded-xl border bg-card shadow-sm">
       <button
         onClick={toggle}
         className="flex items-center justify-between gap-2 w-full p-4 sm:p-6 text-left hover:bg-accent/50 transition-colors"
@@ -194,7 +194,7 @@ function ActionWidget({ action, files, onRun, onShowCode, onDelete, onDownload, 
         style={{ gridTemplateRows: expanded ? '1fr' : '0fr' }}
         onTransitionEnd={(e) => { if (e.target === e.currentTarget && expanded && contentRef.current) contentRef.current.style.overflow = 'visible'; }}
       >
-        <div ref={contentRef} className="overflow-hidden min-w-0">
+        <div ref={contentRef} className="overflow-hidden">
           <div className="px-4 sm:px-6 pb-4 sm:pb-6">
             {devMode && <div className="text-xs text-muted-foreground font-mono mb-1 truncate">{action.identifier}</div>}
             {action.description && <p className="text-xs text-muted-foreground mb-3">{action.description}</p>}
@@ -244,7 +244,7 @@ function FilesWidget({ files, onDownload, onDeleteFile, label }: { files: FileAt
   };
 
   return (
-    <div className="min-w-0 rounded-xl border bg-card shadow-sm overflow-hidden">
+    <div className="rounded-xl border bg-card shadow-sm">
       <button
         onClick={toggle}
         className="flex items-center justify-between gap-2 w-full p-4 sm:p-6 text-left hover:bg-accent/50 transition-colors"
@@ -260,7 +260,7 @@ function FilesWidget({ files, onDownload, onDeleteFile, label }: { files: FileAt
         style={{ gridTemplateRows: expanded ? '1fr' : '0fr' }}
         onTransitionEnd={(e) => { if (e.target === e.currentTarget && expanded && contentRef.current) contentRef.current.style.overflow = 'visible'; }}
       >
-        <div ref={contentRef} className="overflow-hidden min-w-0">
+        <div ref={contentRef} className="overflow-hidden">
           <div className="px-4 sm:px-6 pb-4 sm:pb-6">
             <p className="text-2xl font-bold">{files.length}</p>
             <FileList files={files} onDownload={onDownload} onDelete={onDeleteFile} />

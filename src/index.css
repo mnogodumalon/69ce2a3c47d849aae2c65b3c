@@ -51,9 +51,6 @@
   * {
     @apply border-border outline-ring/50;
   }
-  .safe-area-pb {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
   body {
     @apply bg-background text-foreground;
     font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif;

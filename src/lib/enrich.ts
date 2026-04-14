@@ -12,20 +12,6 @@ function resolveDisplay(url: unknown, map: Map<string, any>, ...fields: string[]
   return fields.map(f => String(r.fields[f] ?? '')).join(' ').trim();
 }
 
-interface KennzahlenMaps {
-  unternehmenMap: Map<string, Unternehmen>;
-}
-
-export function enrichKennzahlen(
-  kennzahlen: Kennzahlen[],
-  maps: KennzahlenMaps
-): EnrichedKennzahlen[] {
-  return kennzahlen.map(r => ({
-    ...r,
-    unternehmen_kpi_refName: resolveDisplay(r.fields.unternehmen_kpi_ref, maps.unternehmenMap, 'firmenname'),
-  }));
-}
-
 interface VerpackungstypenMaps {
   unternehmenMap: Map<string, Unternehmen>;
 }
@@ -65,5 +51,19 @@ export function enrichRegelstatus(
   return regelstatus.map(r => ({
     ...r,
     verpackungstyp_status_refName: resolveDisplay(r.fields.verpackungstyp_status_ref, maps.verpackungstypenMap, 'verpackungs_id'),
+  }));
+}
+
+interface KennzahlenMaps {
+  unternehmenMap: Map<string, Unternehmen>;
+}
+
+export function enrichKennzahlen(
+  kennzahlen: Kennzahlen[],
+  maps: KennzahlenMaps
+): EnrichedKennzahlen[] {
+  return kennzahlen.map(r => ({
+    ...r,
+    unternehmen_kpi_refName: resolveDisplay(r.fields.unternehmen_kpi_ref, maps.unternehmenMap, 'firmenname'),
   }));
 }

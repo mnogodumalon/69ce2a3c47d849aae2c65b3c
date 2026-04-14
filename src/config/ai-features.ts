@@ -6,10 +6,10 @@
 
 export const AI_PHOTO_SCAN: Record<string, boolean> = {
   Unternehmen: true,
-  Kennzahlen: true,
   Verpackungstypen: true,
   Nachweise: true,
   Regelstatus: true,
+  Kennzahlen: true,
 };
 
 /**
@@ -19,8 +19,8 @@ export const AI_PHOTO_SCAN: Record<string, boolean> = {
  */
 export const AI_PHOTO_LOCATION: Record<string, boolean> = {
   Unternehmen: true,
-  Kennzahlen: true,
   Verpackungstypen: true,
   Nachweise: true,
   Regelstatus: true,
+  Kennzahlen: true,
 };

@@ -1,5 +1,5 @@
-import { Outlet } from 'react-router-dom';
-import { IconAlertCircle, IconArrowBackUp, IconMenu2 } from '@tabler/icons-react';
+import { NavLink, Outlet } from 'react-router-dom';
+import { IconAlertCircle, IconArrowBackUp, IconFileText, IconLayoutDashboard, IconMenu2, IconSettings, IconTag } from '@tabler/icons-react';
 import { useState, useEffect } from 'react';
 import ChatWidget from '@/components/ChatWidget';
 import { ActionInputDialog } from '@/components/ActionInputDialog';
@@ -7,11 +7,27 @@ import { TopBar } from '@/components/TopBar';
 import ActionsBar from '@/components/ActionsBar';
 import { useActions } from '@/context/ActionsContext';
 import { Button } from '@/components/ui/button';
-import { VersionCheck } from '@/components/VersionCheck';
 
 const APP_TITLE = 'PPWR Compliance Manager';
 
 const IS_EMBED = new URLSearchParams(window.location.search).has('embed') || window.navigator.userAgent.startsWith('LivingAppsMobile');
+
+const navigation = [
+  { name: 'Übersicht', href: '/', icon: IconLayoutDashboard },
+  { name: 'Unternehmen', href: '/unternehmen', icon: IconFileText },
+  { name: 'Verpackungstypen', href: '/verpackungstypen', icon: IconTag },
+  { name: 'Nachweise', href: '/nachweise', icon: IconFileText },
+  { name: 'Regelstatus', href: '/regelstatus', icon: IconFileText },
+  { name: 'Kennzahlen', href: '/kennzahlen', icon: IconFileText },
+];
+
+const externalNavigation = [
+  { name: 'Unternehmen', href: '/gateway/apps/69ce2a10b74844016addd82e?template=list_page', icon: IconFileText },
+  { name: 'Verpackungstypen', href: '/gateway/apps/69ce2a16a11c5c94e64a8724?template=list_page', icon: IconTag },
+  { name: 'Nachweise', href: '/gateway/apps/69ce2a186fb9551311abbd7f?template=list_page', icon: IconFileText },
+  { name: 'Regelstatus', href: '/gateway/apps/69ce2a18409773a38eb18808?template=list_page', icon: IconFileText },
+  { name: 'Kennzahlen', href: '/gateway/apps/69ce2a19555564c40eccb02c?template=list_page', icon: IconFileText },
+];
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -75,11 +91,84 @@ export function Layout() {
             <IconArrowBackUp size={16} className="shrink-0" />
             <span className="truncate">Zurück</span>
           </a>
+          <p className="px-4 pb-2 pt-2 text-xs font-medium text-muted-foreground">
+            Navigation
+          </p>
+          {/* Overview link */}
+          {navigation.slice(0, 1).map(item => {
+            const Icon = item.icon;
+            return (
+            <NavLink
+              key={item.href}
+              to={item.href}
+              end
+              onClick={() => setSidebarOpen(false)}
+              className={({ isActive }: { isActive: boolean }) =>
+                `flex items-center gap-2 px-4 py-2 rounded-2xl text-base transition-colors min-w-0 ${
+                  isActive
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                    : 'text-sidebar-foreground font-normal hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                }`
+              }
+            >
+              <Icon size={16} className="shrink-0" />
+              <span className="truncate">{item.name}</span>
+            </NavLink>
+            );
+          })}
+          {/* Entity links (external) */}
+          {externalNavigation.map(item => {
+            const Icon = item.icon;
+            return (
+            <a
+              key={item.href}
+              href={item.href}
+              className="flex items-center gap-2 px-4 py-2 rounded-2xl text-base transition-colors min-w-0 text-sidebar-foreground font-normal hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+            >
+              <Icon size={16} className="shrink-0" />
+              <span className="truncate">{item.name}</span>
+            </a>
+            );
+          })}
+          {/* CRUD page links (hidden via .nav-crud-item { display: none } in index.css) */}
+          {navigation.slice(1).map(item => {
+            const Icon = item.icon;
+            return (
+            <NavLink
+              key={item.href}
+              to={item.href}
+              onClick={() => setSidebarOpen(false)}
+              className={({ isActive }: { isActive: boolean }) =>
+                `nav-crud-item flex items-center gap-2 px-4 py-2 rounded-2xl text-base transition-colors min-w-0 ${
+                  isActive
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                    : 'text-sidebar-foreground font-normal hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                }`
+              }
+            >
+              <Icon size={16} className="shrink-0" />
+              <span className="truncate">{item.name}</span>
+            </NavLink>
+            );
+          })}
         </nav>
 
-        <div className="mt-auto px-3 pb-4">
+        <div className="mt-auto px-3 pb-4 hidden">
           <div className="border-t border-sidebar-border pt-3">
-            <VersionCheck />
+            <NavLink
+              to='/admin'
+              onClick={() => setSidebarOpen(false)}
+              className={({ isActive }: { isActive: boolean }) =>
+                `flex items-center gap-2 px-4 py-2 rounded-2xl text-base transition-colors ${
+                  isActive
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                    : 'text-sidebar-foreground/60 font-normal hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                }`
+              }
+            >
+              <IconSettings size={16} className="shrink-0" />
+              <span className="truncate">Verwaltung</span>
+            </NavLink>
           </div>
         </div>
         </div>

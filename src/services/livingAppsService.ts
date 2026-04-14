@@ -1,6 +1,6 @@
 // AUTOMATICALLY GENERATED SERVICE
 import { APP_IDS, LOOKUP_OPTIONS, FIELD_TYPES } from '@/types/app';
-import type { Unternehmen, Kennzahlen, Verpackungstypen, Nachweise, Regelstatus, CreateUnternehmen, CreateKennzahlen, CreateVerpackungstypen, CreateNachweise, CreateRegelstatus } from '@/types/app';
+import type { Unternehmen, Verpackungstypen, Nachweise, Regelstatus, Kennzahlen, CreateUnternehmen, CreateVerpackungstypen, CreateNachweise, CreateRegelstatus, CreateKennzahlen } from '@/types/app';
 
 // Base Configuration
 const API_BASE_URL = 'https://my.living-apps.de/rest';
@@ -215,29 +215,6 @@ export class LivingAppsService {
     return callApi('DELETE', `/apps/${APP_IDS.UNTERNEHMEN}/records/${id}`);
   }
 
-  // --- KENNZAHLEN ---
-  static async getKennzahlen(): Promise<Kennzahlen[]> {
-    const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/records`);
-    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
-      record_id: id, ...rec
-    })) as Kennzahlen[];
-    return enrichLookupFields(records, 'kennzahlen');
-  }
-  static async getKennzahlenEntry(id: string): Promise<Kennzahlen | undefined> {
-    const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`);
-    const record = { record_id: data.id, ...data } as Kennzahlen;
-    return enrichLookupFields([record], 'kennzahlen')[0];
-  }
-  static async createKennzahlenEntry(fields: CreateKennzahlen) {
-    return callApi('POST', `/apps/${APP_IDS.KENNZAHLEN}/records`, { fields: cleanFieldsForApi(fields as any, 'kennzahlen') });
-  }
-  static async updateKennzahlenEntry(id: string, fields: Partial<CreateKennzahlen>) {
-    return callApi('PATCH', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'kennzahlen') });
-  }
-  static async deleteKennzahlenEntry(id: string) {
-    return callApi('DELETE', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`);
-  }
-
   // --- VERPACKUNGSTYPEN ---
   static async getVerpackungstypen(): Promise<Verpackungstypen[]> {
     const data = await callApi('GET', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records`);
@@ -305,6 +282,29 @@ export class LivingAppsService {
   }
   static async deleteRegelstatu(id: string) {
     return callApi('DELETE', `/apps/${APP_IDS.REGELSTATUS}/records/${id}`);
+  }
+
+  // --- KENNZAHLEN ---
+  static async getKennzahlen(): Promise<Kennzahlen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/records`);
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec
+    })) as Kennzahlen[];
+    return enrichLookupFields(records, 'kennzahlen');
+  }
+  static async getKennzahlenEntry(id: string): Promise<Kennzahlen | undefined> {
+    const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`);
+    const record = { record_id: data.id, ...data } as Kennzahlen;
+    return enrichLookupFields([record], 'kennzahlen')[0];
+  }
+  static async createKennzahlenEntry(fields: CreateKennzahlen) {
+    return callApi('POST', `/apps/${APP_IDS.KENNZAHLEN}/records`, { fields: cleanFieldsForApi(fields as any, 'kennzahlen') });
+  }
+  static async updateKennzahlenEntry(id: string, fields: Partial<CreateKennzahlen>) {
+    return callApi('PATCH', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'kennzahlen') });
+  }
+  static async deleteKennzahlenEntry(id: string) {
+    return callApi('DELETE', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`);
   }
 
 }

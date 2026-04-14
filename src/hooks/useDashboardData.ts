@@ -1,31 +1,31 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import type { Unternehmen, Kennzahlen, Verpackungstypen, Nachweise, Regelstatus } from '@/types/app';
+import type { Unternehmen, Verpackungstypen, Nachweise, Regelstatus, Kennzahlen } from '@/types/app';
 import { LivingAppsService } from '@/services/livingAppsService';
 
 export function useDashboardData() {
   const [unternehmen, setUnternehmen] = useState<Unternehmen[]>([]);
-  const [kennzahlen, setKennzahlen] = useState<Kennzahlen[]>([]);
   const [verpackungstypen, setVerpackungstypen] = useState<Verpackungstypen[]>([]);
   const [nachweise, setNachweise] = useState<Nachweise[]>([]);
   const [regelstatus, setRegelstatus] = useState<Regelstatus[]>([]);
+  const [kennzahlen, setKennzahlen] = useState<Kennzahlen[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const fetchAll = useCallback(async () => {
     setError(null);
     try {
-      const [unternehmenData, kennzahlenData, verpackungstypenData, nachweiseData, regelstatusData] = await Promise.all([
+      const [unternehmenData, verpackungstypenData, nachweiseData, regelstatusData, kennzahlenData] = await Promise.all([
         LivingAppsService.getUnternehmen(),
-        LivingAppsService.getKennzahlen(),
         LivingAppsService.getVerpackungstypen(),
         LivingAppsService.getNachweise(),
         LivingAppsService.getRegelstatus(),
+        LivingAppsService.getKennzahlen(),
       ]);
       setUnternehmen(unternehmenData);
-      setKennzahlen(kennzahlenData);
       setVerpackungstypen(verpackungstypenData);
       setNachweise(nachweiseData);
       setRegelstatus(regelstatusData);
+      setKennzahlen(kennzahlenData);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Fehler beim Laden der Daten'));
     } finally {
@@ -39,18 +39,18 @@ export function useDashboardData() {
   useEffect(() => {
     async function silentRefresh() {
       try {
-        const [unternehmenData, kennzahlenData, verpackungstypenData, nachweiseData, regelstatusData] = await Promise.all([
+        const [unternehmenData, verpackungstypenData, nachweiseData, regelstatusData, kennzahlenData] = await Promise.all([
           LivingAppsService.getUnternehmen(),
-          LivingAppsService.getKennzahlen(),
           LivingAppsService.getVerpackungstypen(),
           LivingAppsService.getNachweise(),
           LivingAppsService.getRegelstatus(),
+          LivingAppsService.getKennzahlen(),
         ]);
         setUnternehmen(unternehmenData);
-        setKennzahlen(kennzahlenData);
         setVerpackungstypen(verpackungstypenData);
         setNachweise(nachweiseData);
         setRegelstatus(regelstatusData);
+        setKennzahlen(kennzahlenData);
       } catch {
         // silently ignore — stale data is better than no data
       }
@@ -72,5 +72,5 @@ export function useDashboardData() {
     return m;
   }, [verpackungstypen]);
 
-  return { unternehmen, setUnternehmen, kennzahlen, setKennzahlen, verpackungstypen, setVerpackungstypen, nachweise, setNachweise, regelstatus, setRegelstatus, loading, error, fetchAll, unternehmenMap, verpackungstypenMap };
+  return { unternehmen, setUnternehmen, verpackungstypen, setVerpackungstypen, nachweise, setNachweise, regelstatus, setRegelstatus, kennzahlen, setKennzahlen, loading, error, fetchAll, unternehmenMap, verpackungstypenMap };
 }

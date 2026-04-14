@@ -1,17 +1,17 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useDashboardData } from '@/hooks/useDashboardData';
-import type { Unternehmen, Kennzahlen, Verpackungstypen, Nachweise, Regelstatus } from '@/types/app';
+import type { Unternehmen, Verpackungstypen, Nachweise, Regelstatus, Kennzahlen } from '@/types/app';
 import { LivingAppsService, extractRecordId, cleanFieldsForApi } from '@/services/livingAppsService';
 import { UnternehmenDialog } from '@/components/dialogs/UnternehmenDialog';
 import { UnternehmenViewDialog } from '@/components/dialogs/UnternehmenViewDialog';
-import { KennzahlenDialog } from '@/components/dialogs/KennzahlenDialog';
-import { KennzahlenViewDialog } from '@/components/dialogs/KennzahlenViewDialog';
 import { VerpackungstypenDialog } from '@/components/dialogs/VerpackungstypenDialog';
 import { VerpackungstypenViewDialog } from '@/components/dialogs/VerpackungstypenViewDialog';
 import { NachweiseDialog } from '@/components/dialogs/NachweiseDialog';
 import { NachweiseViewDialog } from '@/components/dialogs/NachweiseViewDialog';
 import { RegelstatusDialog } from '@/components/dialogs/RegelstatusDialog';
 import { RegelstatusViewDialog } from '@/components/dialogs/RegelstatusViewDialog';
+import { KennzahlenDialog } from '@/components/dialogs/KennzahlenDialog';
+import { KennzahlenViewDialog } from '@/components/dialogs/KennzahlenViewDialog';
 import { BulkEditDialog } from '@/components/dialogs/BulkEditDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PageShell } from '@/components/PageShell';
@@ -55,29 +55,6 @@ const UNTERNEHMEN_FIELDS = [
   { key: 'verantwortlich_nachname', label: 'Nachname verantwortliche Person', type: 'string/text' },
   { key: 'verantwortlich_funktion', label: 'Funktion / Position', type: 'string/text' },
   { key: 'verantwortlich_email', label: 'E-Mail verantwortliche Person', type: 'string/email' },
-];
-const KENNZAHLEN_FIELDS = [
-  { key: 'unternehmen_kpi_ref', label: 'Unternehmen', type: 'applookup/select', targetEntity: 'unternehmen', targetAppId: 'UNTERNEHMEN', displayField: 'firmenname' },
-  { key: 'berichtsjahr', label: 'Berichtsjahr', type: 'number' },
-  { key: 'standort', label: 'Standort / Werk', type: 'string/text' },
-  { key: 'gesamtmenge_kg', label: 'Gesamtmenge Verpackungen (kg/Jahr)', type: 'number' },
-  { key: 'menge_kunststoff_kg', label: 'Menge Kunststoff (kg/Jahr)', type: 'number' },
-  { key: 'menge_papier_pappe_kg', label: 'Menge Papier/Pappe (kg/Jahr)', type: 'number' },
-  { key: 'menge_glas_kg', label: 'Menge Glas (kg/Jahr)', type: 'number' },
-  { key: 'menge_metall_kg', label: 'Menge Metall (kg/Jahr)', type: 'number' },
-  { key: 'menge_verbund_kg', label: 'Menge Verbund (kg/Jahr)', type: 'number' },
-  { key: 'rezyklatanteil_gesamt_prozent', label: 'Rezyklatanteil gesamt (%)', type: 'number' },
-  { key: 'rezyklatanteil_kunststoff_prozent', label: 'Rezyklatanteil Kunststoff (%)', type: 'number' },
-  { key: 'rezyklatanteil_papier_prozent', label: 'Rezyklatanteil Papier/Pappe (%)', type: 'number' },
-  { key: 'rezyklatanteil_glas_prozent', label: 'Rezyklatanteil Glas (%)', type: 'number' },
-  { key: 'rezyklatanteil_metall_prozent', label: 'Rezyklatanteil Metall (%)', type: 'number' },
-  { key: 'mehrwegquote_prozent', label: 'Mehrwegquote (%)', type: 'number' },
-  { key: 'recyclingfaehigkeitsquote_prozent', label: 'Anteil recyclingfähiger Verpackungen (%)', type: 'number' },
-  { key: 'anzahl_verpackungstypen', label: 'Anzahl Verpackungstypen gesamt', type: 'number' },
-  { key: 'anzahl_konform', label: 'Davon konform', type: 'number' },
-  { key: 'anzahl_kritisch', label: 'Davon kritisch', type: 'number' },
-  { key: 'anzahl_nicht_konform', label: 'Davon nicht konform', type: 'number' },
-  { key: 'kpi_hinweise', label: 'Hinweise / Anmerkungen', type: 'string/textarea' },
 ];
 const VERPACKUNGSTYPEN_FIELDS = [
   { key: 'unternehmen_ref', label: 'Unternehmen', type: 'applookup/select', targetEntity: 'unternehmen', targetAppId: 'UNTERNEHMEN', displayField: 'firmenname' },
@@ -132,13 +109,36 @@ const REGELSTATUS_FIELDS = [
   { key: 'bewerter_nachname', label: 'Nachname bewertende Person', type: 'string/text' },
   { key: 'bewerter_abteilung', label: 'Abteilung', type: 'string/text' },
 ];
+const KENNZAHLEN_FIELDS = [
+  { key: 'unternehmen_kpi_ref', label: 'Unternehmen', type: 'applookup/select', targetEntity: 'unternehmen', targetAppId: 'UNTERNEHMEN', displayField: 'firmenname' },
+  { key: 'berichtsjahr', label: 'Berichtsjahr', type: 'number' },
+  { key: 'standort', label: 'Standort / Werk', type: 'string/text' },
+  { key: 'gesamtmenge_kg', label: 'Gesamtmenge Verpackungen (kg/Jahr)', type: 'number' },
+  { key: 'menge_kunststoff_kg', label: 'Menge Kunststoff (kg/Jahr)', type: 'number' },
+  { key: 'menge_papier_pappe_kg', label: 'Menge Papier/Pappe (kg/Jahr)', type: 'number' },
+  { key: 'menge_glas_kg', label: 'Menge Glas (kg/Jahr)', type: 'number' },
+  { key: 'menge_metall_kg', label: 'Menge Metall (kg/Jahr)', type: 'number' },
+  { key: 'menge_verbund_kg', label: 'Menge Verbund (kg/Jahr)', type: 'number' },
+  { key: 'rezyklatanteil_gesamt_prozent', label: 'Rezyklatanteil gesamt (%)', type: 'number' },
+  { key: 'rezyklatanteil_kunststoff_prozent', label: 'Rezyklatanteil Kunststoff (%)', type: 'number' },
+  { key: 'rezyklatanteil_papier_prozent', label: 'Rezyklatanteil Papier/Pappe (%)', type: 'number' },
+  { key: 'rezyklatanteil_glas_prozent', label: 'Rezyklatanteil Glas (%)', type: 'number' },
+  { key: 'rezyklatanteil_metall_prozent', label: 'Rezyklatanteil Metall (%)', type: 'number' },
+  { key: 'mehrwegquote_prozent', label: 'Mehrwegquote (%)', type: 'number' },
+  { key: 'recyclingfaehigkeitsquote_prozent', label: 'Anteil recyclingfähiger Verpackungen (%)', type: 'number' },
+  { key: 'anzahl_verpackungstypen', label: 'Anzahl Verpackungstypen gesamt', type: 'number' },
+  { key: 'anzahl_konform', label: 'Davon konform', type: 'number' },
+  { key: 'anzahl_kritisch', label: 'Davon kritisch', type: 'number' },
+  { key: 'anzahl_nicht_konform', label: 'Davon nicht konform', type: 'number' },
+  { key: 'kpi_hinweise', label: 'Hinweise / Anmerkungen', type: 'string/textarea' },
+];
 
 const ENTITY_TABS = [
   { key: 'unternehmen', label: 'Unternehmen', pascal: 'Unternehmen' },
-  { key: 'kennzahlen', label: 'Kennzahlen', pascal: 'Kennzahlen' },
   { key: 'verpackungstypen', label: 'Verpackungstypen', pascal: 'Verpackungstypen' },
   { key: 'nachweise', label: 'Nachweise', pascal: 'Nachweise' },
   { key: 'regelstatus', label: 'Regelstatus', pascal: 'Regelstatus' },
+  { key: 'kennzahlen', label: 'Kennzahlen', pascal: 'Kennzahlen' },
 ] as const;
 
 type EntityKey = typeof ENTITY_TABS[number]['key'];
@@ -150,17 +150,17 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<EntityKey>('unternehmen');
   const [selectedIds, setSelectedIds] = useState<Record<EntityKey, Set<string>>>(() => ({
     'unternehmen': new Set(),
-    'kennzahlen': new Set(),
     'verpackungstypen': new Set(),
     'nachweise': new Set(),
     'regelstatus': new Set(),
+    'kennzahlen': new Set(),
   }));
   const [filters, setFilters] = useState<Record<EntityKey, Record<string, string>>>(() => ({
     'unternehmen': {},
-    'kennzahlen': {},
     'verpackungstypen': {},
     'nachweise': {},
     'regelstatus': {},
+    'kennzahlen': {},
   }));
   const [showFilters, setShowFilters] = useState(false);
   const [dialogState, setDialogState] = useState<{ entity: EntityKey; record: any } | null>(null);
@@ -176,10 +176,10 @@ export default function AdminPage() {
   const getRecords = useCallback((entity: EntityKey) => {
     switch (entity) {
       case 'unternehmen': return (data as any).unternehmen as Unternehmen[] ?? [];
-      case 'kennzahlen': return (data as any).kennzahlen as Kennzahlen[] ?? [];
       case 'verpackungstypen': return (data as any).verpackungstypen as Verpackungstypen[] ?? [];
       case 'nachweise': return (data as any).nachweise as Nachweise[] ?? [];
       case 'regelstatus': return (data as any).regelstatus as Regelstatus[] ?? [];
+      case 'kennzahlen': return (data as any).kennzahlen as Kennzahlen[] ?? [];
       default: return [];
     }
   }, [data]);
@@ -187,9 +187,6 @@ export default function AdminPage() {
   const getLookupLists = useCallback((entity: EntityKey) => {
     const lists: Record<string, any[]> = {};
     switch (entity) {
-      case 'kennzahlen':
-        lists.unternehmenList = (data as any).unternehmen ?? [];
-        break;
       case 'verpackungstypen':
         lists.unternehmenList = (data as any).unternehmen ?? [];
         break;
@@ -198,6 +195,9 @@ export default function AdminPage() {
         break;
       case 'regelstatus':
         lists.verpackungstypenList = (data as any).verpackungstypen ?? [];
+        break;
+      case 'kennzahlen':
+        lists.unternehmenList = (data as any).unternehmen ?? [];
         break;
     }
     return lists;
@@ -209,10 +209,6 @@ export default function AdminPage() {
     if (!id) return '—';
     const lists = getLookupLists(entity);
     void fieldKey; // ensure used for noUnusedParameters
-    if (entity === 'kennzahlen' && fieldKey === 'unternehmen_kpi_ref') {
-      const match = (lists.unternehmenList ?? []).find((r: any) => r.record_id === id);
-      return match?.fields.firmenname ?? '—';
-    }
     if (entity === 'verpackungstypen' && fieldKey === 'unternehmen_ref') {
       const match = (lists.unternehmenList ?? []).find((r: any) => r.record_id === id);
       return match?.fields.firmenname ?? '—';
@@ -225,16 +221,20 @@ export default function AdminPage() {
       const match = (lists.verpackungstypenList ?? []).find((r: any) => r.record_id === id);
       return match?.fields.verpackungs_id ?? '—';
     }
+    if (entity === 'kennzahlen' && fieldKey === 'unternehmen_kpi_ref') {
+      const match = (lists.unternehmenList ?? []).find((r: any) => r.record_id === id);
+      return match?.fields.firmenname ?? '—';
+    }
     return String(url);
   }, [getLookupLists]);
 
   const getFieldMeta = useCallback((entity: EntityKey) => {
     switch (entity) {
       case 'unternehmen': return UNTERNEHMEN_FIELDS;
-      case 'kennzahlen': return KENNZAHLEN_FIELDS;
       case 'verpackungstypen': return VERPACKUNGSTYPEN_FIELDS;
       case 'nachweise': return NACHWEISE_FIELDS;
       case 'regelstatus': return REGELSTATUS_FIELDS;
+      case 'kennzahlen': return KENNZAHLEN_FIELDS;
       default: return [];
     }
   }, []);
@@ -334,11 +334,6 @@ export default function AdminPage() {
         update: (id: string, fields: any) => LivingAppsService.updateUnternehmenEntry(id, fields),
         remove: (id: string) => LivingAppsService.deleteUnternehmenEntry(id),
       };
-      case 'kennzahlen': return {
-        create: (fields: any) => LivingAppsService.createKennzahlenEntry(fields),
-        update: (id: string, fields: any) => LivingAppsService.updateKennzahlenEntry(id, fields),
-        remove: (id: string) => LivingAppsService.deleteKennzahlenEntry(id),
-      };
       case 'verpackungstypen': return {
         create: (fields: any) => LivingAppsService.createVerpackungstypenEntry(fields),
         update: (id: string, fields: any) => LivingAppsService.updateVerpackungstypenEntry(id, fields),
@@ -353,6 +348,11 @@ export default function AdminPage() {
         create: (fields: any) => LivingAppsService.createRegelstatu(fields),
         update: (id: string, fields: any) => LivingAppsService.updateRegelstatu(id, fields),
         remove: (id: string) => LivingAppsService.deleteRegelstatu(id),
+      };
+      case 'kennzahlen': return {
+        create: (fields: any) => LivingAppsService.createKennzahlenEntry(fields),
+        update: (id: string, fields: any) => LivingAppsService.updateKennzahlenEntry(id, fields),
+        remove: (id: string) => LivingAppsService.deleteKennzahlenEntry(id),
       };
       default: return null;
     }
@@ -691,17 +691,6 @@ export default function AdminPage() {
           enablePhotoLocation={AI_PHOTO_LOCATION['Unternehmen']}
         />
       )}
-      {(createEntity === 'kennzahlen' || dialogState?.entity === 'kennzahlen') && (
-        <KennzahlenDialog
-          open={createEntity === 'kennzahlen' || dialogState?.entity === 'kennzahlen'}
-          onClose={() => { setCreateEntity(null); setDialogState(null); }}
-          onSubmit={dialogState?.entity === 'kennzahlen' ? handleUpdate : (fields: any) => handleCreate('kennzahlen', fields)}
-          defaultValues={dialogState?.entity === 'kennzahlen' ? dialogState.record?.fields : undefined}
-          unternehmenList={(data as any).unternehmen ?? []}
-          enablePhotoScan={AI_PHOTO_SCAN['Kennzahlen']}
-          enablePhotoLocation={AI_PHOTO_LOCATION['Kennzahlen']}
-        />
-      )}
       {(createEntity === 'verpackungstypen' || dialogState?.entity === 'verpackungstypen') && (
         <VerpackungstypenDialog
           open={createEntity === 'verpackungstypen' || dialogState?.entity === 'verpackungstypen'}
@@ -735,21 +724,23 @@ export default function AdminPage() {
           enablePhotoLocation={AI_PHOTO_LOCATION['Regelstatus']}
         />
       )}
+      {(createEntity === 'kennzahlen' || dialogState?.entity === 'kennzahlen') && (
+        <KennzahlenDialog
+          open={createEntity === 'kennzahlen' || dialogState?.entity === 'kennzahlen'}
+          onClose={() => { setCreateEntity(null); setDialogState(null); }}
+          onSubmit={dialogState?.entity === 'kennzahlen' ? handleUpdate : (fields: any) => handleCreate('kennzahlen', fields)}
+          defaultValues={dialogState?.entity === 'kennzahlen' ? dialogState.record?.fields : undefined}
+          unternehmenList={(data as any).unternehmen ?? []}
+          enablePhotoScan={AI_PHOTO_SCAN['Kennzahlen']}
+          enablePhotoLocation={AI_PHOTO_LOCATION['Kennzahlen']}
+        />
+      )}
       {viewState?.entity === 'unternehmen' && (
         <UnternehmenViewDialog
           open={viewState?.entity === 'unternehmen'}
           onClose={() => setViewState(null)}
           record={viewState?.record}
           onEdit={(r: any) => { setViewState(null); setDialogState({ entity: 'unternehmen', record: r }); }}
-        />
-      )}
-      {viewState?.entity === 'kennzahlen' && (
-        <KennzahlenViewDialog
-          open={viewState?.entity === 'kennzahlen'}
-          onClose={() => setViewState(null)}
-          record={viewState?.record}
-          onEdit={(r: any) => { setViewState(null); setDialogState({ entity: 'kennzahlen', record: r }); }}
-          unternehmenList={(data as any).unternehmen ?? []}
         />
       )}
       {viewState?.entity === 'verpackungstypen' && (
@@ -777,6 +768,15 @@ export default function AdminPage() {
           record={viewState?.record}
           onEdit={(r: any) => { setViewState(null); setDialogState({ entity: 'regelstatus', record: r }); }}
           verpackungstypenList={(data as any).verpackungstypen ?? []}
+        />
+      )}
+      {viewState?.entity === 'kennzahlen' && (
+        <KennzahlenViewDialog
+          open={viewState?.entity === 'kennzahlen'}
+          onClose={() => setViewState(null)}
+          record={viewState?.record}
+          onEdit={(r: any) => { setViewState(null); setDialogState({ entity: 'kennzahlen', record: r }); }}
+          unternehmenList={(data as any).unternehmen ?? []}
         />
       )}
 
