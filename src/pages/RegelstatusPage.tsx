@@ -237,6 +237,7 @@ export default function RegelstatusPage() {
         onClose={() => { setDialogOpen(false); setEditingRecord(null); }}
         onSubmit={editingRecord ? handleUpdate : handleCreate}
         defaultValues={editingRecord?.fields}
+        recordId={editingRecord?.record_id}
         verpackungstypenList={verpackungstypenList}
         enablePhotoScan={AI_PHOTO_SCAN['Regelstatus']}
         enablePhotoLocation={AI_PHOTO_LOCATION['Regelstatus']}

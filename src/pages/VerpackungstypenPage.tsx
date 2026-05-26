@@ -377,6 +377,7 @@ export default function VerpackungstypenPage() {
         onClose={() => { setDialogOpen(false); setEditingRecord(null); }}
         onSubmit={editingRecord ? handleUpdate : handleCreate}
         defaultValues={editingRecord?.fields}
+        recordId={editingRecord?.record_id}
         unternehmenList={unternehmenList}
         enablePhotoScan={AI_PHOTO_SCAN['Verpackungstypen']}
         enablePhotoLocation={AI_PHOTO_LOCATION['Verpackungstypen']}

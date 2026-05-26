@@ -143,6 +143,7 @@ export function ActionInputDialog({ action, schema, options, onSubmit, onCancel 
         <Input
           id={key}
           type="number"
+          step="any"
           value={values[key] != null ? String(values[key]) : ''}
           onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value ? Number(e.target.value) : '' }))}
         />

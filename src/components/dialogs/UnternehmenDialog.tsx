@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { Unternehmen } from '@/types/app';
 import { APP_IDS } from '@/types/app';
 import { extractRecordId, createRecordUrl, cleanFieldsForApi, getUserProfile } from '@/services/livingAppsService';
@@ -9,23 +9,41 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { ComputedContext } from '@/config/form-enhancements/types';
+import { applyFieldOrder, flattenFieldOrder, applyDefaults, evalComputed, numberInputProps, clampNumberValue, classifyComputed, extractApplookupRefs, mergeApplookupRefs, resolveApplookupRef } from '@/config/form-enhancements/types';
+import { formEnhancements, computedDeps, computedApplookupRefs } from '@/config/form-enhancements/Unternehmen';
+import { AttachmentsSection } from '@/components/AttachmentsSection';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { IconCamera, IconCircleCheck, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
-import { fileToDataUri, extractFromPhoto, extractPhotoMeta, reverseGeocode } from '@/lib/ai';
+import { IconCamera, IconChevronDown, IconCircleCheck, IconClipboard, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
+import { fileToDataUri, extractFromInput, extractPhotoMeta, reverseGeocode } from '@/lib/ai';
 
 interface UnternehmenDialogProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (fields: Unternehmen['fields']) => Promise<void>;
   defaultValues?: Unternehmen['fields'];
+  /** Record id when editing — enables the attachments section. Omit on create. */
+  recordId?: string;
   enablePhotoScan?: boolean;
   enablePhotoLocation?: boolean;
 }
 
-export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, enablePhotoScan = true, enablePhotoLocation = true }: UnternehmenDialogProps) {
+export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, recordId, enablePhotoScan = true, enablePhotoLocation = true }: UnternehmenDialogProps) {
   const [fields, setFields] = useState<Partial<Unternehmen['fields']>>({});
   const [saving, setSaving] = useState(false);
+  // Dirty-tracking: in edit-mode the Speichern button is disabled until the
+  // user actually changes something. JSON.stringify is good enough for our
+  // fields (plain values + LookupValue objects + string arrays).
+  const isDirty = useMemo(() => {
+    if (!defaultValues) return true;  // create-mode: always allow submit
+    try {
+      return JSON.stringify(fields) !== JSON.stringify(defaultValues);
+    } catch {
+      return true;
+    }
+  }, [fields, defaultValues]);
+  const [aiOpen, setAiOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -38,12 +56,46 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, enab
   const [showProfileInfo, setShowProfileInfo] = useState(false);
   const [profileData, setProfileData] = useState<Record<string, unknown> | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [aiText, setAiText] = useState('');
+
+  // Computed-field plumbing. Pure no-op when formEnhancements.computed is {}.
+  // The number renderer uses computedValues only as a fallback when the user
+  // hasn't typed anything — clearing the input always restores the computation.
+  // computedContext exposes applookup list props so { kind: 'applookup', ... }
+  // operands can resolve to numeric fields on the target record.
+  const computedContext = useMemo<ComputedContext>(() => ({
+    lookupLists: {
+    },
+  }), []);
+  const computedValues = useMemo<Record<string, number | null>>(() => {
+    let out: Record<string, number | null> = {};
+    const entries = Object.entries(formEnhancements.computed);
+    for (let i = 0; i < 5; i++) {
+      const merged: Record<string, unknown> = { ...(fields as Record<string, unknown>) };
+      for (const [k, v] of Object.entries(out)) {
+        if (v === null) continue;
+        const cur = merged[k];
+        if (cur === undefined || cur === null || cur === '') merged[k] = v;
+      }
+      const next: Record<string, number | null> = {};
+      let changed = false;
+      for (const [key, spec] of entries) {
+        const v = evalComputed(spec, merged, computedContext);
+        next[key] = v;
+        if (v !== out[key]) changed = true;
+      }
+      out = next;
+      if (!changed) break;
+    }
+    return out;
+  }, [fields, computedContext]);
 
   useEffect(() => {
     if (open) {
-      setFields(defaultValues ?? {});
+      setFields(applyDefaults((defaultValues ?? {}) as Record<string, unknown>, formEnhancements.defaults) as Partial<Unternehmen['fields']>);
       setPreview(null);
       setScanSuccess(false);
+      setAiText('');
     }
   }, [open, defaultValues]);
   useEffect(() => {
@@ -67,7 +119,21 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, enab
     e.preventDefault();
     setSaving(true);
     try {
-      const clean = cleanFieldsForApi({ ...fields }, 'unternehmen');
+      // Fill empty number slots from computed values; user-typed values always win.
+      // CRITICAL: only backend-mapped keys may be backfilled. Virtual computeds
+      // (sub-agent invents `_netto`, `_bestellung_gesamtbetrag` etc. for the
+      // "Berechnungen" display) have no backend counterpart — writing them
+      // triggers a 422 from the Living-Apps API ("field does not exist").
+      const merged = { ...fields };
+      for (const [key, val] of Object.entries(computedValues)) {
+        if (val === null) continue;
+        if (!backendFieldSet.has(key)) continue;
+        const cur = (merged as Record<string, unknown>)[key];
+        if (cur === undefined || cur === null || cur === '') {
+          (merged as Record<string, unknown>)[key] = val;
+        }
+      }
+      const clean = cleanFieldsForApi(merged, 'unternehmen');
       await onSubmit(clean as Unternehmen['fields']);
       onClose();
     } finally {
@@ -75,22 +141,28 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, enab
     }
   }
 
-  async function handlePhotoScan(file: File) {
+  async function handleAiExtract(file?: File) {
+    if (!file && !aiText.trim()) return;
     setScanning(true);
     setScanSuccess(false);
     try {
-      const [uri, meta] = await Promise.all([fileToDataUri(file), extractPhotoMeta(file)]);
-      if (file.type.startsWith('image/')) setPreview(uri);
-      const gps = enablePhotoLocation ? meta?.gps ?? null : null;
-      const parts: string[] = [];
+      let uri: string | undefined;
+      let gps: { latitude: number; longitude: number } | null = null;
       let geoAddr = '';
-      if (gps) {
-        geoAddr = await reverseGeocode(gps.latitude, gps.longitude);
-        parts.push(`Location coordinates: ${gps.latitude}, ${gps.longitude}`);
-        if (geoAddr) parts.push(`Reverse-geocoded address: ${geoAddr}`);
-      }
-      if (meta?.dateTime) {
-        parts.push(`Date taken: ${meta.dateTime.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3')}`);
+      const parts: string[] = [];
+      if (file) {
+        const [dataUri, meta] = await Promise.all([fileToDataUri(file), extractPhotoMeta(file)]);
+        uri = dataUri;
+        if (file.type.startsWith('image/')) setPreview(uri);
+        gps = enablePhotoLocation ? meta?.gps ?? null : null;
+        if (gps) {
+          geoAddr = await reverseGeocode(gps.latitude, gps.longitude);
+          parts.push(`Location coordinates: ${gps.latitude}, ${gps.longitude}`);
+          if (geoAddr) parts.push(`Reverse-geocoded address: ${geoAddr}`);
+        }
+        if (meta?.dateTime) {
+          parts.push(`Date taken: ${meta.dateTime.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3')}`);
+        }
       }
       const contextParts: string[] = [];
       if (parts.length) {
@@ -106,7 +178,12 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, enab
       }
       const photoContext = contextParts.length ? contextParts.join('\n') : undefined;
       const schema = `{\n  "firmenname": string | null, // Firmenname\n  "strasse": string | null, // Straße\n  "hausnummer": string | null, // Hausnummer\n  "plz": string | null, // Postleitzahl\n  "ort": string | null, // Ort\n  "laender": string | null, // Tätigkeitsländer\n  "ansprechpartner_vorname": string | null, // Vorname Ansprechpartner\n  "ansprechpartner_nachname": string | null, // Nachname Ansprechpartner\n  "ansprechpartner_email": string | null, // E-Mail Ansprechpartner\n  "ansprechpartner_telefon": string | null, // Telefon Ansprechpartner\n  "steuernummer": string | null, // Steuernummer / USt-IdNr.\n  "epr_registrierungsnummern": string | null, // EPR-Registrierungsnummern (je Land)\n  "verantwortlich_vorname": string | null, // Vorname verantwortliche Person\n  "verantwortlich_nachname": string | null, // Nachname verantwortliche Person\n  "verantwortlich_funktion": string | null, // Funktion / Position\n  "verantwortlich_email": string | null, // E-Mail verantwortliche Person\n}`;
-      const raw = await extractFromPhoto<Record<string, unknown>>(uri, schema, photoContext, DIALOG_INTENT);
+      const raw = await extractFromInput<Record<string, unknown>>(schema, {
+        dataUri: uri,
+        userText: aiText.trim() || undefined,
+        photoContext,
+        intent: DIALOG_INTENT,
+      });
       setFields(prev => {
         const merged = { ...prev } as Record<string, unknown>;
         function matchName(name: string, candidates: string[]): boolean {
@@ -118,6 +195,7 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, enab
         }
         return merged as Partial<Unternehmen['fields']>;
       });
+      setAiText('');
       setScanSuccess(true);
       setTimeout(() => setScanSuccess(false), 3000);
     } catch (err) {
@@ -130,7 +208,7 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, enab
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) handlePhotoScan(f);
+    if (f) handleAiExtract(f);
     e.target.value = '';
   }
 
@@ -152,28 +230,292 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, enab
     setDragOver(false);
     const file = e.dataTransfer.files?.[0];
     if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
-      handlePhotoScan(file);
+      handleAiExtract(file);
     }
   }, []);
 
   const DIALOG_INTENT = defaultValues ? 'Unternehmen bearbeiten' : 'Unternehmen hinzufügen';
 
-  return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{DIALOG_INTENT}</DialogTitle>
-        </DialogHeader>
+  const fieldBlocks: Record<string, React.ReactNode> = {
+    'firmenname': (
+      <div key="firmenname" className="space-y-1.5">
+        <Label htmlFor="firmenname">Firmenname</Label>
+        <Input
+          id="firmenname"
+          placeholder=""
+          value={fields.firmenname ?? ''}
+          onChange={e => setFields(f => ({ ...f, firmenname: e.target.value }))}
+        />
+      </div>
+    ),
+    'strasse': (
+      <div key="strasse" className="space-y-1.5">
+        <Label htmlFor="strasse">Straße</Label>
+        <Input
+          id="strasse"
+          placeholder=""
+          value={fields.strasse ?? ''}
+          onChange={e => setFields(f => ({ ...f, strasse: e.target.value }))}
+        />
+      </div>
+    ),
+    'hausnummer': (
+      <div key="hausnummer" className="space-y-1.5">
+        <Label htmlFor="hausnummer">Hausnummer</Label>
+        <Input
+          id="hausnummer"
+          placeholder=""
+          value={fields.hausnummer ?? ''}
+          onChange={e => setFields(f => ({ ...f, hausnummer: e.target.value }))}
+        />
+      </div>
+    ),
+    'plz': (
+      <div key="plz" className="space-y-1.5">
+        <Label htmlFor="plz">Postleitzahl</Label>
+        <Input
+          id="plz"
+          placeholder=""
+          value={fields.plz ?? ''}
+          onChange={e => setFields(f => ({ ...f, plz: e.target.value }))}
+        />
+      </div>
+    ),
+    'ort': (
+      <div key="ort" className="space-y-1.5">
+        <Label htmlFor="ort">Ort</Label>
+        <Input
+          id="ort"
+          placeholder=""
+          value={fields.ort ?? ''}
+          onChange={e => setFields(f => ({ ...f, ort: e.target.value }))}
+        />
+      </div>
+    ),
+    'laender': (
+      <div key="laender" className="space-y-1.5">
+        <Label htmlFor="laender">Tätigkeitsländer</Label>
+        <Input
+          id="laender"
+          placeholder=""
+          value={fields.laender ?? ''}
+          onChange={e => setFields(f => ({ ...f, laender: e.target.value }))}
+        />
+      </div>
+    ),
+    'ansprechpartner_vorname': (
+      <div key="ansprechpartner_vorname" className="space-y-1.5">
+        <Label htmlFor="ansprechpartner_vorname">Vorname Ansprechpartner</Label>
+        <Input
+          id="ansprechpartner_vorname"
+          placeholder=""
+          value={fields.ansprechpartner_vorname ?? ''}
+          onChange={e => setFields(f => ({ ...f, ansprechpartner_vorname: e.target.value }))}
+        />
+      </div>
+    ),
+    'ansprechpartner_nachname': (
+      <div key="ansprechpartner_nachname" className="space-y-1.5">
+        <Label htmlFor="ansprechpartner_nachname">Nachname Ansprechpartner</Label>
+        <Input
+          id="ansprechpartner_nachname"
+          placeholder=""
+          value={fields.ansprechpartner_nachname ?? ''}
+          onChange={e => setFields(f => ({ ...f, ansprechpartner_nachname: e.target.value }))}
+        />
+      </div>
+    ),
+    'ansprechpartner_email': (
+      <div key="ansprechpartner_email" className="space-y-1.5">
+        <Label htmlFor="ansprechpartner_email">E-Mail Ansprechpartner</Label>
+        <Input
+          id="ansprechpartner_email"
+          type="email"
+          placeholder=""
+          value={fields.ansprechpartner_email ?? ''}
+          onChange={e => setFields(f => ({ ...f, ansprechpartner_email: e.target.value }))}
+        />
+      </div>
+    ),
+    'ansprechpartner_telefon': (
+      <div key="ansprechpartner_telefon" className="space-y-1.5">
+        <Label htmlFor="ansprechpartner_telefon">Telefon Ansprechpartner</Label>
+        <Input
+          id="ansprechpartner_telefon"
+          value={fields.ansprechpartner_telefon ?? ''}
+          onChange={e => setFields(f => ({ ...f, ansprechpartner_telefon: e.target.value }))}
+        />
+      </div>
+    ),
+    'steuernummer': (
+      <div key="steuernummer" className="space-y-1.5">
+        <Label htmlFor="steuernummer">Steuernummer / USt-IdNr.</Label>
+        <Input
+          id="steuernummer"
+          placeholder=""
+          value={fields.steuernummer ?? ''}
+          onChange={e => setFields(f => ({ ...f, steuernummer: e.target.value }))}
+        />
+      </div>
+    ),
+    'epr_registrierungsnummern': (
+      <div key="epr_registrierungsnummern" className="space-y-1.5">
+        <Label htmlFor="epr_registrierungsnummern">EPR-Registrierungsnummern (je Land)</Label>
+        <Textarea
+          id="epr_registrierungsnummern"
+          placeholder=""
+          value={fields.epr_registrierungsnummern ?? ''}
+          onChange={e => setFields(f => ({ ...f, epr_registrierungsnummern: e.target.value }))}
+          rows={3}
+        />
+      </div>
+    ),
+    'verantwortlich_vorname': (
+      <div key="verantwortlich_vorname" className="space-y-1.5">
+        <Label htmlFor="verantwortlich_vorname">Vorname verantwortliche Person</Label>
+        <Input
+          id="verantwortlich_vorname"
+          placeholder=""
+          value={fields.verantwortlich_vorname ?? ''}
+          onChange={e => setFields(f => ({ ...f, verantwortlich_vorname: e.target.value }))}
+        />
+      </div>
+    ),
+    'verantwortlich_nachname': (
+      <div key="verantwortlich_nachname" className="space-y-1.5">
+        <Label htmlFor="verantwortlich_nachname">Nachname verantwortliche Person</Label>
+        <Input
+          id="verantwortlich_nachname"
+          placeholder=""
+          value={fields.verantwortlich_nachname ?? ''}
+          onChange={e => setFields(f => ({ ...f, verantwortlich_nachname: e.target.value }))}
+        />
+      </div>
+    ),
+    'verantwortlich_funktion': (
+      <div key="verantwortlich_funktion" className="space-y-1.5">
+        <Label htmlFor="verantwortlich_funktion">Funktion / Position</Label>
+        <Input
+          id="verantwortlich_funktion"
+          placeholder=""
+          value={fields.verantwortlich_funktion ?? ''}
+          onChange={e => setFields(f => ({ ...f, verantwortlich_funktion: e.target.value }))}
+        />
+      </div>
+    ),
+    'verantwortlich_email': (
+      <div key="verantwortlich_email" className="space-y-1.5">
+        <Label htmlFor="verantwortlich_email">E-Mail verantwortliche Person</Label>
+        <Input
+          id="verantwortlich_email"
+          type="email"
+          placeholder=""
+          value={fields.verantwortlich_email ?? ''}
+          onChange={e => setFields(f => ({ ...f, verantwortlich_email: e.target.value }))}
+        />
+      </div>
+    ),
+  };
+  const orderedFields = applyFieldOrder(Object.keys(fieldBlocks), formEnhancements.fieldOrder);
+  const orderedFieldsKey = orderedFields.map((it) => typeof it === 'string' ? it : it.row.join('+')).join(',');
 
-        {enablePhotoScan && (
-          <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-            <div>
-              <div className="flex items-center gap-1.5 font-medium">
-                <IconSparkles className="h-4 w-4 text-primary" />
-                KI-Assistent
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">Versteht deine Fotos / Dokumente und füllt alles für dich aus</p>
-            </div>
+  // Render-Modell für Computed-Felder:
+  //
+  //   • BACKEND-FELDER mit computed-Eintrag (z.B. gesamtpreis bei einer
+  //     Katzenpension) bleiben als normales Eingabe-Feld stehen. Der Number-
+  //     Input nutzt den computed-Wert als Vorschlag, der User kann jederzeit
+  //     überschreiben (clearing → restore computed).
+  //   • VIRTUELLE computed-Keys (Eintrag in formEnhancements.computed, ABER
+  //     kein passendes Backend-Feld in orderedFields) erscheinen NICHT als
+  //     Input, sondern unten als kompakte 'Berechnungen'-Übersicht oder als
+  //     Inline-Hint unter dem letzten beitragenden Input.
+  const FIELD_LABELS: Record<string, string> = {"firmenname": "Firmenname", "strasse": "Straße", "hausnummer": "Hausnummer", "plz": "Postleitzahl", "ort": "Ort", "laender": "Tätigkeitsländer", "ansprechpartner_vorname": "Vorname Ansprechpartner", "ansprechpartner_nachname": "Nachname Ansprechpartner", "ansprechpartner_email": "E-Mail Ansprechpartner", "ansprechpartner_telefon": "Telefon Ansprechpartner", "steuernummer": "Steuernummer / USt-IdNr.", "epr_registrierungsnummern": "EPR-Registrierungsnummern (je Land)", "verantwortlich_vorname": "Vorname verantwortliche Person", "verantwortlich_nachname": "Nachname verantwortliche Person", "verantwortlich_funktion": "Funktion / Position", "verantwortlich_email": "E-Mail verantwortliche Person"};
+  const CURRENCY_KEYS = new Set<string>([]);
+  // Applookup-Referenz-Labels: pro applookup-Feld in dieser Form (ownKey)
+  // eine Map { lookupKey: label } für ALLE Felder des Target-Schemas. Wird
+  // beim Render-Walk gefiltert auf die in der computed-Formel tatsächlich
+  // referenzierten lookupKeys (siehe applookupRefs unten).
+  const APPLOOKUP_LABELS: Record<string, Record<string, string>> = {};
+  const inputFields = useMemo(() => flattenFieldOrder(orderedFields), [orderedFieldsKey]);
+  const backendFieldSet = useMemo(() => new Set(inputFields), [inputFields.join(',')]);
+  const virtualComputed = useMemo(
+    () => Object.fromEntries(
+      Object.entries(formEnhancements.computed).filter(([k]) => !backendFieldSet.has(k)),
+    ),
+    [backendFieldSet],
+  );
+  const virtualFormEnhancements = useMemo(
+    () => ({ ...formEnhancements, computed: virtualComputed }),
+    [virtualComputed],
+  );
+  const computedLayout = useMemo(
+    () => classifyComputed(virtualFormEnhancements, inputFields, computedDeps),
+    [virtualFormEnhancements, inputFields.join(',')],
+  );
+  // Applookup-Referenzen: pro ownKey (Lookup-Feld im Form) die Liste der
+  // lookupKeys, die in irgendeiner computed-Formel referenziert werden.
+  // MODUS-1: aus dem Spec-Tree extrahiert. MODUS-2: aus dem Build-Time-
+  // Export computedApplookupRefs (parse-formulas hat Regex-Pairs gesammelt).
+  // Pro (ownKey, lookupKey)-Paar nur einmal; pro ownKey können aber mehrere
+  // lookupKeys gleichzeitig auftauchen (z.B. einzelpreis UND karten10_preis
+  // beim Yoga-Kurs), und alle werden separat als Inline-Hint gerendert.
+  const applookupRefs = useMemo(
+    () => mergeApplookupRefs(
+      extractApplookupRefs(formEnhancements.computed),
+      computedApplookupRefs,
+    ),
+    [],
+  );
+  function summaryLabel(k: string): string {
+    if (FIELD_LABELS[k]) return FIELD_LABELS[k];
+    // Leading underscore(s) als Virtual-Marker abstreifen; Unterstriche zu
+    // Leerzeichen, jedes Wort kapitalisieren. Umlaute kommen vom Sub-Agent
+    // direkt im Key (z. B. `_buchung_dauer_nächte`) — JS/TS/Vite unterstützen
+    // Unicode-Identifier nativ, daher keine ASCII-Transliteration nötig.
+    return k.replace(/^_+/, '')
+      .split('_')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  }
+  function formatSummaryValue(k: string, v: unknown): string {
+    if (v === undefined || v === null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return '—';
+    const n = typeof v === 'number' ? v : Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    // Backend-Feld mit €-Label ODER virtueller Computed-Key, dessen Name nach Geld aussieht.
+    const looksLikeCurrency = CURRENCY_KEYS.has(k) || /(?:kosten|preis|betrag|gesamt|netto|brutto|summe|mwst|rabatt|anzahlung|umsatz|saldo)/i.test(k);
+    if (looksLikeCurrency) {
+      return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+  }
+
+  return (
+    <>
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0">
+        <DialogHeader className="px-6 pt-5 pb-3 border-b flex flex-row items-center gap-3 space-y-0">
+          <DialogTitle className="flex-1 truncate text-left">{DIALOG_INTENT}</DialogTitle>
+          {enablePhotoScan && (
+            <button
+              type="button"
+              onClick={() => setAiOpen(o => !o)}
+              aria-expanded={aiOpen}
+              aria-controls="ai-fill-panel"
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all mr-7 shadow-sm ${
+                aiOpen
+                  ? 'bg-primary text-primary-foreground ring-2 ring-primary/30'
+                  : 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/15 hover:border-primary/50'
+              }`}
+            >
+              <IconSparkles className={`h-3.5 w-3.5 ${aiOpen ? '' : 'text-primary'}`} />
+              <span className="hidden sm:inline">KI-Ausfüllen</span>
+              <IconChevronDown className={`h-3 w-3 transition-transform ${aiOpen ? 'rotate-180' : ''}`} />
+            </button>
+          )}
+        </DialogHeader>
+        {enablePhotoScan && aiOpen && (
+          <div id="ai-fill-panel" className="border-b bg-muted/20 px-6 py-4 space-y-3">
+            <p className="text-xs text-muted-foreground">Versteht Fotos, Dokumente und Text und füllt alles für dich aus</p>
             <div className="flex items-start gap-2 pl-0.5">
               <Checkbox
                 id="ai-use-personal-info"
@@ -269,16 +611,16 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, enab
               )}
             </div>
 
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" className="flex-1 h-9 text-xs" disabled={scanning}
+            <div className="grid grid-cols-3 gap-2">
+              <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); cameraInputRef.current?.click(); }}>
-                <IconCamera className="h-3.5 w-3.5 mr-1.5" />Kamera
+                <IconCamera className="h-3.5 w-3.5 mr-1" />Kamera
               </Button>
-              <Button type="button" variant="outline" size="sm" className="flex-1 h-9 text-xs" disabled={scanning}
+              <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-                <IconUpload className="h-3.5 w-3.5 mr-1.5" />Foto wählen
+                <IconUpload className="h-3.5 w-3.5 mr-1" />Foto wählen
               </Button>
-              <Button type="button" variant="outline" size="sm" className="flex-1 h-9 text-xs" disabled={scanning}
+              <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => {
                   e.stopPropagation();
                   if (fileInputRef.current) {
@@ -287,152 +629,164 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, enab
                     setTimeout(() => { if (fileInputRef.current) fileInputRef.current.accept = 'image/*,application/pdf'; }, 100);
                   }
                 }}>
-                <IconFileText className="h-3.5 w-3.5 mr-1.5" />Dokument
+                <IconFileText className="h-3.5 w-3.5 mr-1" />Dokument
               </Button>
             </div>
+
+            <div className="relative">
+              <Textarea
+                placeholder="Text eingeben oder einfügen, z.B. Notizen, E-Mails, Beschreibungen..."
+                value={aiText}
+                onChange={e => {
+                  setAiText(e.target.value);
+                  const el = e.target;
+                  el.style.height = 'auto';
+                  el.style.height = Math.min(Math.max(el.scrollHeight, 56), 96) + 'px';
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && aiText.trim() && !scanning) {
+                    e.preventDefault();
+                    handleAiExtract();
+                  }
+                }}
+                disabled={scanning}
+                rows={2}
+                className="pr-12 resize-none text-sm overflow-y-auto"
+              />
+              <button
+                type="button"
+                className="absolute right-2 top-2 h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                disabled={scanning}
+                onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    if (text) setAiText(prev => prev ? prev + '\n' + text : text);
+                  } catch {}
+                }}
+                title="Paste"
+              >
+                <IconClipboard className="h-4 w-4" />
+              </button>
+            </div>
+            {aiText.trim() && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full h-9 text-xs"
+                disabled={scanning}
+                onClick={() => handleAiExtract()}
+              >
+                <IconSparkles className="h-3.5 w-3.5 mr-1.5" />Analysieren
+              </Button>
+            )}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="firmenname">Firmenname</Label>
-            <Input
-              id="firmenname"
-              value={fields.firmenname ?? ''}
-              onChange={e => setFields(f => ({ ...f, firmenname: e.target.value }))}
-            />
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 min-w-0">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-4 min-w-0">
+            {(() => {
+              const renderField = (k: string) => {
+                const inlineHints = computedLayout.anchors[k] ?? [];
+                const refs = applookupRefs[k] ?? [];
+                return (
+                  <div key={k} className="space-y-1.5 min-w-0">
+                    {fieldBlocks[k]}
+                    {refs.map(({ lookupKey }) => {
+                      // Show the live numeric value the formula will pull from
+                      // the selected lookup target (e.g. "Monatspreis: 34,90 €"
+                      // under the Tarif combobox). Hidden while no lookup is
+                      // selected or the target field is non-numeric.
+                      const v = resolveApplookupRef(k, lookupKey, fields as Record<string, unknown>, computedContext);
+                      if (v === null) return null;
+                      const lbl = APPLOOKUP_LABELS[k]?.[lookupKey] ?? lookupKey;
+                      const text = formatSummaryValue(lookupKey, v);
+                      return (
+                        <div key={`alh-${k}-${lookupKey}`} className="flex items-center gap-1.5 pl-3 text-xs text-muted-foreground">
+                          <span className="text-primary/70">→</span>
+                          <span>{lbl}</span>
+                          <span className="ml-auto font-medium tabular-nums text-foreground">{text}</span>
+                        </div>
+                      );
+                    })}
+                    {inlineHints.map((cKey) => {
+                      const v = computedValues[cKey];
+                      const text = formatSummaryValue(cKey, v);
+                      if (text === '—') return null;
+                      return (
+                        <div key={cKey} className="flex items-center gap-1.5 pl-3 text-xs text-muted-foreground">
+                          <span className="text-primary/70">→</span>
+                          <span>{summaryLabel(cKey)}</span>
+                          <span className="ml-auto font-medium tabular-nums text-foreground">{text}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              };
+              return orderedFields.map((item, idx) => {
+                if (typeof item === 'string') return renderField(item);
+                const cols = item.cols ?? `repeat(${item.row.length}, minmax(0, 1fr))`;
+                return (
+                  <div key={`row-${idx}`} className="grid gap-3" style={{ gridTemplateColumns: cols }}>
+                    {item.row.map(renderField)}
+                  </div>
+                );
+              });
+            })()}
+            {(computedLayout.aggregates.length > 0 || computedLayout.finalTotal) && (
+              <div className="mt-6 pt-4 border-t border-border space-y-1.5">
+                {computedLayout.aggregates.length > 0 && (
+                  <dl className="space-y-1.5 pb-2">
+                    {computedLayout.aggregates.map((k) => {
+                      const userVal = (fields as Record<string, unknown>)[k];
+                      const computed = computedValues[k];
+                      const v = userVal !== undefined && userVal !== null && userVal !== '' ? userVal : computed;
+                      return (
+                        <div key={k} className="flex justify-between items-baseline gap-3">
+                          <dt className="text-sm text-muted-foreground truncate">{summaryLabel(k)}</dt>
+                          <dd className="text-sm font-medium tabular-nums whitespace-nowrap">{formatSummaryValue(k, v)}</dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                )}
+                {computedLayout.finalTotal && (() => {
+                  const k = computedLayout.finalTotal;
+                  const userVal = (fields as Record<string, unknown>)[k];
+                  const computed = computedValues[k];
+                  const v = userVal !== undefined && userVal !== null && userVal !== '' ? userVal : computed;
+                  // Innere Border nur wenn aggregates existieren — sonst hätten wir
+                  // zwei direkt aufeinanderfolgende Striche (Outer + Inner) mit nur
+                  // einer Aggregat-Zeile dazwischen → zu viel visuelles Rauschen.
+                  const sep = computedLayout.aggregates.length > 0 ? 'pt-3 border-t border-border' : 'pt-1';
+                  return (
+                    <div className={`flex justify-between items-baseline gap-3 ${sep}`}>
+                      <span className="text-base font-semibold text-foreground">{summaryLabel(k)}</span>
+                      <span className="text-lg font-bold tabular-nums whitespace-nowrap text-foreground">{formatSummaryValue(k, v)}</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+            {recordId && (
+              <div className="pt-2 border-t border-border">
+                <AttachmentsSection appId={APP_IDS.UNTERNEHMEN} recordId={recordId} />
+              </div>
+            )}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="strasse">Straße</Label>
-            <Input
-              id="strasse"
-              value={fields.strasse ?? ''}
-              onChange={e => setFields(f => ({ ...f, strasse: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="hausnummer">Hausnummer</Label>
-            <Input
-              id="hausnummer"
-              value={fields.hausnummer ?? ''}
-              onChange={e => setFields(f => ({ ...f, hausnummer: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="plz">Postleitzahl</Label>
-            <Input
-              id="plz"
-              value={fields.plz ?? ''}
-              onChange={e => setFields(f => ({ ...f, plz: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="ort">Ort</Label>
-            <Input
-              id="ort"
-              value={fields.ort ?? ''}
-              onChange={e => setFields(f => ({ ...f, ort: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="laender">Tätigkeitsländer</Label>
-            <Input
-              id="laender"
-              value={fields.laender ?? ''}
-              onChange={e => setFields(f => ({ ...f, laender: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="ansprechpartner_vorname">Vorname Ansprechpartner</Label>
-            <Input
-              id="ansprechpartner_vorname"
-              value={fields.ansprechpartner_vorname ?? ''}
-              onChange={e => setFields(f => ({ ...f, ansprechpartner_vorname: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="ansprechpartner_nachname">Nachname Ansprechpartner</Label>
-            <Input
-              id="ansprechpartner_nachname"
-              value={fields.ansprechpartner_nachname ?? ''}
-              onChange={e => setFields(f => ({ ...f, ansprechpartner_nachname: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="ansprechpartner_email">E-Mail Ansprechpartner</Label>
-            <Input
-              id="ansprechpartner_email"
-              type="email"
-              value={fields.ansprechpartner_email ?? ''}
-              onChange={e => setFields(f => ({ ...f, ansprechpartner_email: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="ansprechpartner_telefon">Telefon Ansprechpartner</Label>
-            <Input
-              id="ansprechpartner_telefon"
-              value={fields.ansprechpartner_telefon ?? ''}
-              onChange={e => setFields(f => ({ ...f, ansprechpartner_telefon: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="steuernummer">Steuernummer / USt-IdNr.</Label>
-            <Input
-              id="steuernummer"
-              value={fields.steuernummer ?? ''}
-              onChange={e => setFields(f => ({ ...f, steuernummer: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="epr_registrierungsnummern">EPR-Registrierungsnummern (je Land)</Label>
-            <Textarea
-              id="epr_registrierungsnummern"
-              value={fields.epr_registrierungsnummern ?? ''}
-              onChange={e => setFields(f => ({ ...f, epr_registrierungsnummern: e.target.value }))}
-              rows={3}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="verantwortlich_vorname">Vorname verantwortliche Person</Label>
-            <Input
-              id="verantwortlich_vorname"
-              value={fields.verantwortlich_vorname ?? ''}
-              onChange={e => setFields(f => ({ ...f, verantwortlich_vorname: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="verantwortlich_nachname">Nachname verantwortliche Person</Label>
-            <Input
-              id="verantwortlich_nachname"
-              value={fields.verantwortlich_nachname ?? ''}
-              onChange={e => setFields(f => ({ ...f, verantwortlich_nachname: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="verantwortlich_funktion">Funktion / Position</Label>
-            <Input
-              id="verantwortlich_funktion"
-              value={fields.verantwortlich_funktion ?? ''}
-              onChange={e => setFields(f => ({ ...f, verantwortlich_funktion: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="verantwortlich_email">E-Mail verantwortliche Person</Label>
-            <Input
-              id="verantwortlich_email"
-              type="email"
-              value={fields.verantwortlich_email ?? ''}
-              onChange={e => setFields(f => ({ ...f, verantwortlich_email: e.target.value }))}
-            />
-          </div>
-          <DialogFooter>
+          <DialogFooter className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-3 gap-2">
             <Button type="button" variant="outline" onClick={onClose}>Abbrechen</Button>
-            <Button type="submit" disabled={saving}>
+            <Button
+              type="submit"
+              disabled={saving || !isDirty}
+            >
               {saving ? 'Speichern...' : defaultValues ? 'Speichern' : 'Erstellen'}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

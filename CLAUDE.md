@@ -16,6 +16,39 @@ Your users don't understand code or UI design. Their requests will be simple and
 
 ## Workflow: Analyze, Implement, Deploy
 
+### Step 0: Form-Polish Sub-Agent SOFORT dispatchen (vor Step 1)
+
+Du machst NICHT das Form-Polish — der Sub-Agent macht es. Du dispatchst ihn und
+gehst direkt zu Step 1 (Dashboard).
+
+```
+Agent(
+  description: "Form-Polish",
+  subagent_type: "form_polish",
+  run_in_background: true,
+  prompt: "Lies .placeholder-tasks.json im Projekt-Root und arbeite die Tasks ab."
+)
+```
+
+Der `form_polish` Subagent-Typ ist mit den vollständigen Heuristiken vorkonfiguriert
+(im Service registriert) — du musst keinen langen Prompt mitschicken.
+`run_in_background: true` lässt ihn parallel laufen.
+
+**STRIKT VERBOTEN für dich (Main-Agent) bis zur Sync-Barriere:**
+Der Sub-Agent ist alleinverantwortlich für Placeholders, Form-Enhancements und den
+Polish-Report. Du darfst parallel NUR `src/pages/DashboardOverview.tsx` lesen/schreiben.
+Berühre KEINE der folgenden Dateien — auch nicht "nebenbei" oder "zur Sicherheit":
+- `.placeholder-tasks.json` (NIE Read/Write/Edit/Bash-rm — das ist Sub-Agent-Trigger)
+- `src/config/form-enhancements/*.ts` (außer der Build-Step über `parse-formulas.mjs`)
+- `.form-polish-report.json` (schreibt der Sub-Agent)
+- `src/components/dialogs/*Dialog.tsx` (Placeholder-Edits sind Sub-Agent-Job)
+- `src/components/dialogs/*ViewDialog.tsx`
+- `src/pages/public/PublicForm_*.tsx`
+
+Wenn du Lust hast diese Dateien anzufassen, halte inne und warte stattdessen auf den
+Sub-Agent. Doppelte Arbeit kostet doppelt und triggert Race-Conditions, wenn euer
+beider Edits sich überlappen.
+
 ### Step 1: Analyze (1-2 sentences)
 Read `.scaffold_context` and `app_metadata.json`. Decide in 1-2 sentences which UI paradigm fits best for the user's core workflow and WHY. Then go straight to implementation.
 
@@ -23,7 +56,27 @@ Read `.scaffold_context` and `app_metadata.json`. Decide in 1-2 sentences which 
 Follow `.claude/skills/frontend-impl/SKILL.md` to build DashboardOverview.tsx with the chosen UI paradigm. Layout.tsx title is pre-set to the appgroup name — skip editing it unless you need a different title. index.css is pre-generated — do NOT touch it.
 
 ### Step 3: Build
-Run `npm run build`. If it fails, fix the errors and retry until the build succeeds.
+
+**Sync-Barriere — VOR dem Build PFLICHT:** Der Form-Polish Sub-Agent aus Step 0 läuft im Hintergrund und schreibt die per-Entity-Configs (Defaults, Computed, Placeholders). Er löscht `.placeholder-tasks.json` als ALLERLETZTE Aktion. Bevor du baust, musst du auf dieses Marker-File warten — sonst landen leere Form-Enhancements im finalen Bundle.
+
+Führe diesen Bash-Befehl aus (max 180s warten, dann trotzdem bauen — verlorene Polish-Daten sind besser als ein hängender Build):
+
+```
+i=0; while [ -f /home/user/app/.placeholder-tasks.json ] && [ $i -lt 90 ]; do sleep 2; i=$((i+1)); done; [ -f /home/user/app/.placeholder-tasks.json ] && echo "WARN: sub-agent not done after 180s — building without polish" || echo "sub-agent done"; if [ -f /home/user/app/.form-polish-report.json ]; then echo "=== FORM POLISH REPORT ==="; cat /home/user/app/.form-polish-report.json; echo "=== END REPORT ==="; else echo "WARN: no form-polish report written"; fi; echo "=== SUB-AGENT TOOL CALLS ==="; find /tmp -path "*/tasks/*.output" -mmin -10 2>/dev/null | head -1 | xargs -r grep -oE '"tool_name":"[^"]*"|"file_path":"[^"]*"|"command":"[^"]{0,120}' 2>/dev/null | head -80; echo "=== END SUB-AGENT TOOL CALLS ==="
+```
+
+Direkt nach der Barriere — NOCH VOR dem Build — zwei Post-Process-Skripte ausführen, in dieser Reihenfolge:
+
+```
+node scripts/apply-placeholders.mjs
+node scripts/parse-formulas.mjs
+```
+
+`apply-placeholders.mjs` liest die vom Sub-Agent geschriebene `.placeholder-suggestions.json` (Map `Dialog.tsx → { fieldKey → placeholdertext }`) und trägt die Werte in die Dialog-Dateien ein — per Regex auf `id="<key>" … placeholder=""`. Funktioniert für Input, Textarea, Combobox, DatePicker und SelectValue. Robust gegen fehlende Suggestions (lässt leere Slots leer, kein Build-Bruch).
+
+`parse-formulas.mjs` liest `src/config/form-enhancements/*.ts`, ersetzt die vom Sub-Agent geschriebenen Formel-Strings (z. B. `'applookup(mitarbeiter, stundensatz) * field(arbeitsstunden)'`) durch die Runtime-Spec-Tree-Objekte, die der EntityDialog-Renderer auswertet. MODUS-2-Pfeilfunktionen bleiben unangetastet, fehlerhafte Formeln werden stillschweigend gedroppt — der Build geht weiter.
+
+Erst NACH Barriere UND Parser-Lauf: `npm run build`. If it fails, fix the errors and retry until the build succeeds.
 Deployment happens automatically after you finish — do NOT deploy manually.
 After `npm run build` succeeds, STOP immediately. Do not write summaries.
 
@@ -50,7 +103,6 @@ The following files are **pre-generated** and provide a complete React Router ap
 - `src/lib/enrich.ts` — `enrichX()` functions to resolve applookup fields to display names
 - `src/lib/formatters.ts` — `formatDate()`, `formatCurrency()`, `displayLookup()`, `displayMultiLookup()`, `lookupKey()`, `lookupKeys()` (locale-aware)
 - `src/lib/ai.ts` — AI utilities: `chatCompletion`, `classify`, `extract`, `summarize`, `translate`, `analyzeImage`, `extractFromPhoto`, `fileToDataUri`
-- `src/lib/chat-context.ts` — App-specific AI assistant system prompt
 - `src/components/ChatWidget.tsx` — Floating AI chat assistant (included in Layout)
 - `src/config/ai-features.ts` — AI photo scan toggles per entity (**you can edit this!**)
 - `src/pages/{Entity}Page.tsx` — Full CRUD pages per entity (table, search, create/edit/delete)
@@ -70,13 +122,23 @@ The CRUD pages provide basic list-based CRUD as a fallback. **Your job is to bui
 
 - **DashboardOverview.tsx** — You MUST call `Read("src/pages/DashboardOverview.tsx")` FIRST. Then call `Write` ONCE with the complete new content. Do NOT read it back after writing. Do NOT use Bash cat/echo — use ONLY Read and Write tools. The skeleton already has `useDashboardData()`, enrichment, loading/error — keep that pattern, replace the empty content div. **Keep the enriched type imports** (`import type { EnrichedX } from '@/types/enriched'`) and enrichment calls (`const enrichedX = enrichX(x, { ... })`) from the skeleton — they are pre-generated for the specific entities that have applookup dependencies.
 - **Rules of Hooks** — ALL hooks (`useState`, `useEffect`, `useMemo`, `useCallback`) MUST be placed BEFORE any early returns (`if (loading) return ...`, `if (error) return ...`). Placing hooks after early returns causes React error #310 at runtime.
-- **Reuse pre-generated dialogs in DashboardOverview** — When the dashboard needs create/edit dialogs, ALWAYS import and reuse the pre-generated `{Entity}Dialog` from `@/components/dialogs/{Entity}Dialog`. Do NOT build custom dialog forms — they lack photo scan, validation, and all field types. Example: `import { KurseDialog } from '@/components/dialogs/KurseDialog';`
+- **Reuse pre-generated dialogs in DashboardOverview** — When the dashboard needs create/edit dialogs, ALWAYS import and reuse the pre-generated `{Entity}Dialog` from `@/components/dialogs/{Entity}Dialog`. Do NOT build custom dialog forms — they lack photo scan, validation, attachments, and all field types. Example: `import { KurseDialog } from '@/components/dialogs/KurseDialog';`. **Always pass `recordId={editingRecord?.record_id}` in edit-mode** — the attachments section (file/note/url/json per record) is hidden without it.
 - **index.css** — NEVER touch. Pre-generated design system (font, colors, sidebar theme). Use existing tokens.
 - **Layout.tsx** — APP_TITLE is pre-set to the appgroup name. Only Edit if you need a different title.
-- **useDashboardData.ts, enriched.ts, enrich.ts, formatters.ts, ai.ts, chat-context.ts, ChatWidget.tsx** — NEVER touch. Use as-is.
+- **useDashboardData.ts, enriched.ts, enrich.ts, formatters.ts, ai.ts, ChatWidget.tsx, ErrorBus.tsx** — NEVER touch. Use as-is.
 - **`src/config/ai-features.ts`** — You MAY edit this file. Set `AI_PHOTO_SCAN['EntityName']` to `true` to enable the "Foto scannen" button in that entity's dialog. The button lets users photograph a document/receipt/card and auto-fill form fields via AI.
 - **CRUD pages and dialogs** — NEVER touch. Complete with all logic.
-- **App.tsx** — NEVER touch. Routes are pre-configured.
+- **App.tsx** — Routes are pre-configured. You MAY add custom imports/routes **only inside the `<custom:imports>` and `<custom:routes>` marker blocks** — content between markers is preserved across scaffold updates, everything else is overwritten. Example:
+  ```tsx
+  // <custom:imports>
+  import MyCustomPage from '@/pages/MyCustomPage';
+  // </custom:imports>
+  ...
+  {/* <custom:routes> */}
+  <Route path="custom" element={<MyCustomPage />} />
+  {/* </custom:routes> */}
+  ```
+  Never edit outside the markers — changes will be lost on the next scaffold update.
 - **PageShell.tsx, StatCard.tsx, ConfirmDialog.tsx** — NEVER touch.
 - **AdminPage.tsx, BulkEditDialog.tsx** — NEVER touch. Pre-generated admin panel with filters, multi-select, and bulk actions.
 
@@ -89,11 +151,20 @@ The CRUD pages provide basic list-based CRUD as a fallback. **Your job is to bui
   onClose={() => setDialogOpen(false)}
   onSubmit={async (fields) => { await LivingAppsService.createKurseEntry(fields); fetchAll(); }} // dialog closes itself on success
   defaultValues={editRecord?.fields}         // undefined = create, fields = edit
+  recordId={editRecord?.record_id}           // REQUIRED in edit-mode — without it the attachments section is hidden
   dozentenList={dozenten}                    // list prop name = {entityIdentifier}List — EXACTLY matching useDashboardData key
   raeumeList={raeume}                        // e.g. dozenten → dozentenList, raeume → raeumeList (NOT dozentList/raumList)
   enablePhotoScan={AI_PHOTO_SCAN['Kurse']}   // import AI_PHOTO_SCAN from '@/config/ai-features'
   enablePhotoLocation={AI_PHOTO_LOCATION['Kurse']}  // import AI_PHOTO_LOCATION — extract GPS from photo EXIF for geo field auto-fill
 />
+```
+
+**Attachments section** — every `{Entity}Dialog` ships with an attachments panel (file/note/url/json) that mounts automatically when `recordId` is passed. Same for `{Entity}ViewDialog`, which gets `record.record_id` from the record prop. Forgetting `recordId={editRecord?.record_id}` in an edit-flow silently hides this panel — users will be confused why attachments work on the entity-page but not in your custom dashboard. There is nothing else to import or wire up.
+
+**NEVER pass `[]` to a `…List` prop.** Every applookup list MUST come from `useDashboardData()` — even for entities your dashboard otherwise ignores. An empty array silently disables the combobox.
+```tsx
+// ❌ const { kunden } = useDashboardData();  <KurseDialog kundenList={kunden} raeumeList={[]} />
+// ✅ const { kunden, raeume } = useDashboardData();  <KurseDialog kundenList={kunden} raeumeList={raeume} />
 ```
 
 **Applookup `defaultValues` need full record URLs — NEVER raw IDs:**
@@ -213,7 +284,6 @@ import { IconPlus, IconPencil, IconTrash, IconCalendar, IconClock, IconMapPin, I
 | `src/lib/enrich.ts` | `enrichX()` functions for applookup resolution |
 | `src/lib/formatters.ts` | `formatDate()`, `formatCurrency()`, `displayLookup()`, `displayMultiLookup()`, `lookupKey()`, `lookupKeys()` |
 | `src/lib/ai.ts` | AI helpers: `chatCompletion`, `classify`, `extract`, `summarize`, `translate`, `analyzeImage`, `extractFromPhoto`, `fileToDataUri` |
-| `src/lib/chat-context.ts` | App-specific system prompt for AI assistant |
 | `src/components/ChatWidget.tsx` | Floating AI chat assistant (in Layout) |
 | `src/config/ai-features.ts` | AI feature toggles — **editable** (photo scan per entity) |
 | `src/App.tsx` | React Router with all routes |
@@ -360,6 +430,10 @@ const file = e.target.files[0];
 const uri = await fileToDataUri(file);
 const fields = await extractFromPhoto(uri, '{"product": "string", "price": "number"}');
 ```
+
+## Public Landing Pages
+
+If the user asks for a landing page (*Landingpage*, *Verteilseite*, marketing page, public submission page — often with an attached mockup or Figma image), use the **`landing-pages`** skill. It covers the skeleton location, `_agent_context/public_forms.json`, the `<public:*>` App.tsx markers, and the `/#/public/p/<slug>` route convention.
 
 ## Build
 After completion: Run `npm run build` to create the production bundle. Deployment is handled automatically by the service.

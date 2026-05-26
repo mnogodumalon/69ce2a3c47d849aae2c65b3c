@@ -313,6 +313,7 @@ export default function KennzahlenPage() {
         onClose={() => { setDialogOpen(false); setEditingRecord(null); }}
         onSubmit={editingRecord ? handleUpdate : handleCreate}
         defaultValues={editingRecord?.fields}
+        recordId={editingRecord?.record_id}
         unternehmenList={unternehmenList}
         enablePhotoScan={AI_PHOTO_SCAN['Kennzahlen']}
         enablePhotoLocation={AI_PHOTO_LOCATION['Kennzahlen']}

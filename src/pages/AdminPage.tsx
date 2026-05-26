@@ -1,15 +1,15 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useDashboardData } from '@/hooks/useDashboardData';
-import type { Unternehmen, Verpackungstypen, Nachweise, Regelstatus, Kennzahlen } from '@/types/app';
+import type { Verpackungstypen, Nachweise, Regelstatus, Unternehmen, Kennzahlen } from '@/types/app';
 import { LivingAppsService, extractRecordId, cleanFieldsForApi } from '@/services/livingAppsService';
-import { UnternehmenDialog } from '@/components/dialogs/UnternehmenDialog';
-import { UnternehmenViewDialog } from '@/components/dialogs/UnternehmenViewDialog';
 import { VerpackungstypenDialog } from '@/components/dialogs/VerpackungstypenDialog';
 import { VerpackungstypenViewDialog } from '@/components/dialogs/VerpackungstypenViewDialog';
 import { NachweiseDialog } from '@/components/dialogs/NachweiseDialog';
 import { NachweiseViewDialog } from '@/components/dialogs/NachweiseViewDialog';
 import { RegelstatusDialog } from '@/components/dialogs/RegelstatusDialog';
 import { RegelstatusViewDialog } from '@/components/dialogs/RegelstatusViewDialog';
+import { UnternehmenDialog } from '@/components/dialogs/UnternehmenDialog';
+import { UnternehmenViewDialog } from '@/components/dialogs/UnternehmenViewDialog';
 import { KennzahlenDialog } from '@/components/dialogs/KennzahlenDialog';
 import { KennzahlenViewDialog } from '@/components/dialogs/KennzahlenViewDialog';
 import { BulkEditDialog } from '@/components/dialogs/BulkEditDialog';
@@ -38,24 +38,6 @@ function fmtDate(d?: string) {
 }
 
 // Field metadata per entity for bulk edit and column filters
-const UNTERNEHMEN_FIELDS = [
-  { key: 'firmenname', label: 'Firmenname', type: 'string/text' },
-  { key: 'strasse', label: 'Straße', type: 'string/text' },
-  { key: 'hausnummer', label: 'Hausnummer', type: 'string/text' },
-  { key: 'plz', label: 'Postleitzahl', type: 'string/text' },
-  { key: 'ort', label: 'Ort', type: 'string/text' },
-  { key: 'laender', label: 'Tätigkeitsländer', type: 'string/text' },
-  { key: 'ansprechpartner_vorname', label: 'Vorname Ansprechpartner', type: 'string/text' },
-  { key: 'ansprechpartner_nachname', label: 'Nachname Ansprechpartner', type: 'string/text' },
-  { key: 'ansprechpartner_email', label: 'E-Mail Ansprechpartner', type: 'string/email' },
-  { key: 'ansprechpartner_telefon', label: 'Telefon Ansprechpartner', type: 'string/tel' },
-  { key: 'steuernummer', label: 'Steuernummer / USt-IdNr.', type: 'string/text' },
-  { key: 'epr_registrierungsnummern', label: 'EPR-Registrierungsnummern (je Land)', type: 'string/textarea' },
-  { key: 'verantwortlich_vorname', label: 'Vorname verantwortliche Person', type: 'string/text' },
-  { key: 'verantwortlich_nachname', label: 'Nachname verantwortliche Person', type: 'string/text' },
-  { key: 'verantwortlich_funktion', label: 'Funktion / Position', type: 'string/text' },
-  { key: 'verantwortlich_email', label: 'E-Mail verantwortliche Person', type: 'string/email' },
-];
 const VERPACKUNGSTYPEN_FIELDS = [
   { key: 'unternehmen_ref', label: 'Unternehmen', type: 'applookup/select', targetEntity: 'unternehmen', targetAppId: 'UNTERNEHMEN', displayField: 'firmenname' },
   { key: 'verpackungs_id', label: 'Verpackungs-ID', type: 'string/text' },
@@ -109,6 +91,24 @@ const REGELSTATUS_FIELDS = [
   { key: 'bewerter_nachname', label: 'Nachname bewertende Person', type: 'string/text' },
   { key: 'bewerter_abteilung', label: 'Abteilung', type: 'string/text' },
 ];
+const UNTERNEHMEN_FIELDS = [
+  { key: 'firmenname', label: 'Firmenname', type: 'string/text' },
+  { key: 'strasse', label: 'Straße', type: 'string/text' },
+  { key: 'hausnummer', label: 'Hausnummer', type: 'string/text' },
+  { key: 'plz', label: 'Postleitzahl', type: 'string/text' },
+  { key: 'ort', label: 'Ort', type: 'string/text' },
+  { key: 'laender', label: 'Tätigkeitsländer', type: 'string/text' },
+  { key: 'ansprechpartner_vorname', label: 'Vorname Ansprechpartner', type: 'string/text' },
+  { key: 'ansprechpartner_nachname', label: 'Nachname Ansprechpartner', type: 'string/text' },
+  { key: 'ansprechpartner_email', label: 'E-Mail Ansprechpartner', type: 'string/email' },
+  { key: 'ansprechpartner_telefon', label: 'Telefon Ansprechpartner', type: 'string/tel' },
+  { key: 'steuernummer', label: 'Steuernummer / USt-IdNr.', type: 'string/text' },
+  { key: 'epr_registrierungsnummern', label: 'EPR-Registrierungsnummern (je Land)', type: 'string/textarea' },
+  { key: 'verantwortlich_vorname', label: 'Vorname verantwortliche Person', type: 'string/text' },
+  { key: 'verantwortlich_nachname', label: 'Nachname verantwortliche Person', type: 'string/text' },
+  { key: 'verantwortlich_funktion', label: 'Funktion / Position', type: 'string/text' },
+  { key: 'verantwortlich_email', label: 'E-Mail verantwortliche Person', type: 'string/email' },
+];
 const KENNZAHLEN_FIELDS = [
   { key: 'unternehmen_kpi_ref', label: 'Unternehmen', type: 'applookup/select', targetEntity: 'unternehmen', targetAppId: 'UNTERNEHMEN', displayField: 'firmenname' },
   { key: 'berichtsjahr', label: 'Berichtsjahr', type: 'number' },
@@ -134,10 +134,10 @@ const KENNZAHLEN_FIELDS = [
 ];
 
 const ENTITY_TABS = [
-  { key: 'unternehmen', label: 'Unternehmen', pascal: 'Unternehmen' },
   { key: 'verpackungstypen', label: 'Verpackungstypen', pascal: 'Verpackungstypen' },
   { key: 'nachweise', label: 'Nachweise', pascal: 'Nachweise' },
   { key: 'regelstatus', label: 'Regelstatus', pascal: 'Regelstatus' },
+  { key: 'unternehmen', label: 'Unternehmen', pascal: 'Unternehmen' },
   { key: 'kennzahlen', label: 'Kennzahlen', pascal: 'Kennzahlen' },
 ] as const;
 
@@ -147,19 +147,19 @@ export default function AdminPage() {
   const data = useDashboardData();
   const { loading, error, fetchAll } = data;
 
-  const [activeTab, setActiveTab] = useState<EntityKey>('unternehmen');
+  const [activeTab, setActiveTab] = useState<EntityKey>('verpackungstypen');
   const [selectedIds, setSelectedIds] = useState<Record<EntityKey, Set<string>>>(() => ({
-    'unternehmen': new Set(),
     'verpackungstypen': new Set(),
     'nachweise': new Set(),
     'regelstatus': new Set(),
+    'unternehmen': new Set(),
     'kennzahlen': new Set(),
   }));
   const [filters, setFilters] = useState<Record<EntityKey, Record<string, string>>>(() => ({
-    'unternehmen': {},
     'verpackungstypen': {},
     'nachweise': {},
     'regelstatus': {},
+    'unternehmen': {},
     'kennzahlen': {},
   }));
   const [showFilters, setShowFilters] = useState(false);
@@ -175,10 +175,10 @@ export default function AdminPage() {
 
   const getRecords = useCallback((entity: EntityKey) => {
     switch (entity) {
-      case 'unternehmen': return (data as any).unternehmen as Unternehmen[] ?? [];
       case 'verpackungstypen': return (data as any).verpackungstypen as Verpackungstypen[] ?? [];
       case 'nachweise': return (data as any).nachweise as Nachweise[] ?? [];
       case 'regelstatus': return (data as any).regelstatus as Regelstatus[] ?? [];
+      case 'unternehmen': return (data as any).unternehmen as Unternehmen[] ?? [];
       case 'kennzahlen': return (data as any).kennzahlen as Kennzahlen[] ?? [];
       default: return [];
     }
@@ -230,10 +230,10 @@ export default function AdminPage() {
 
   const getFieldMeta = useCallback((entity: EntityKey) => {
     switch (entity) {
-      case 'unternehmen': return UNTERNEHMEN_FIELDS;
       case 'verpackungstypen': return VERPACKUNGSTYPEN_FIELDS;
       case 'nachweise': return NACHWEISE_FIELDS;
       case 'regelstatus': return REGELSTATUS_FIELDS;
+      case 'unternehmen': return UNTERNEHMEN_FIELDS;
       case 'kennzahlen': return KENNZAHLEN_FIELDS;
       default: return [];
     }
@@ -329,11 +329,6 @@ export default function AdminPage() {
 
   const getServiceMethods = useCallback((entity: EntityKey) => {
     switch (entity) {
-      case 'unternehmen': return {
-        create: (fields: any) => LivingAppsService.createUnternehmenEntry(fields),
-        update: (id: string, fields: any) => LivingAppsService.updateUnternehmenEntry(id, fields),
-        remove: (id: string) => LivingAppsService.deleteUnternehmenEntry(id),
-      };
       case 'verpackungstypen': return {
         create: (fields: any) => LivingAppsService.createVerpackungstypenEntry(fields),
         update: (id: string, fields: any) => LivingAppsService.updateVerpackungstypenEntry(id, fields),
@@ -348,6 +343,11 @@ export default function AdminPage() {
         create: (fields: any) => LivingAppsService.createRegelstatu(fields),
         update: (id: string, fields: any) => LivingAppsService.updateRegelstatu(id, fields),
         remove: (id: string) => LivingAppsService.deleteRegelstatu(id),
+      };
+      case 'unternehmen': return {
+        create: (fields: any) => LivingAppsService.createUnternehmenEntry(fields),
+        update: (id: string, fields: any) => LivingAppsService.updateUnternehmenEntry(id, fields),
+        remove: (id: string) => LivingAppsService.deleteUnternehmenEntry(id),
       };
       case 'kennzahlen': return {
         create: (fields: any) => LivingAppsService.createKennzahlenEntry(fields),
@@ -624,10 +624,23 @@ export default function AdminPage() {
                   if (fm.type === 'lookup/select' || fm.type === 'lookup/radio') {
                     return <TableCell key={fm.key}><span className="inline-flex items-center bg-secondary border border-[#bfdbfe] text-[#2563eb] rounded-[10px] px-2 py-1 text-sm font-medium">{val?.label ?? '—'}</span></TableCell>;
                   }
-                  if (fm.type.includes('multiplelookup')) {
+                  if (fm.type.startsWith('multiplelookup')) {
                     return <TableCell key={fm.key}>{Array.isArray(val) ? val.map((v: any) => v?.label ?? v).join(', ') : '—'}</TableCell>;
                   }
-                  if (fm.type.includes('applookup')) {
+                  if (fm.type.startsWith('multipleapplookup')) {
+                    return (
+                      <TableCell key={fm.key}>
+                        {Array.isArray(val) && val.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {val.map((url: any, i: number) => (
+                              <span key={i} className="inline-flex items-center bg-secondary border border-[#bfdbfe] text-[#2563eb] rounded-[10px] px-2 py-1 text-sm font-medium">{getApplookupDisplay(activeTab, fm.key, url)}</span>
+                            ))}
+                          </div>
+                        ) : '—'}
+                      </TableCell>
+                    );
+                  }
+                  if (fm.type.startsWith('applookup')) {
                     return <TableCell key={fm.key}><span className="inline-flex items-center bg-secondary border border-[#bfdbfe] text-[#2563eb] rounded-[10px] px-2 py-1 text-sm font-medium">{getApplookupDisplay(activeTab, fm.key, val)}</span></TableCell>;
                   }
                   if (fm.type.includes('date')) {
@@ -681,16 +694,6 @@ export default function AdminPage() {
         </Table>
       </div>
 
-      {(createEntity === 'unternehmen' || dialogState?.entity === 'unternehmen') && (
-        <UnternehmenDialog
-          open={createEntity === 'unternehmen' || dialogState?.entity === 'unternehmen'}
-          onClose={() => { setCreateEntity(null); setDialogState(null); }}
-          onSubmit={dialogState?.entity === 'unternehmen' ? handleUpdate : (fields: any) => handleCreate('unternehmen', fields)}
-          defaultValues={dialogState?.entity === 'unternehmen' ? dialogState.record?.fields : undefined}
-          enablePhotoScan={AI_PHOTO_SCAN['Unternehmen']}
-          enablePhotoLocation={AI_PHOTO_LOCATION['Unternehmen']}
-        />
-      )}
       {(createEntity === 'verpackungstypen' || dialogState?.entity === 'verpackungstypen') && (
         <VerpackungstypenDialog
           open={createEntity === 'verpackungstypen' || dialogState?.entity === 'verpackungstypen'}
@@ -724,6 +727,16 @@ export default function AdminPage() {
           enablePhotoLocation={AI_PHOTO_LOCATION['Regelstatus']}
         />
       )}
+      {(createEntity === 'unternehmen' || dialogState?.entity === 'unternehmen') && (
+        <UnternehmenDialog
+          open={createEntity === 'unternehmen' || dialogState?.entity === 'unternehmen'}
+          onClose={() => { setCreateEntity(null); setDialogState(null); }}
+          onSubmit={dialogState?.entity === 'unternehmen' ? handleUpdate : (fields: any) => handleCreate('unternehmen', fields)}
+          defaultValues={dialogState?.entity === 'unternehmen' ? dialogState.record?.fields : undefined}
+          enablePhotoScan={AI_PHOTO_SCAN['Unternehmen']}
+          enablePhotoLocation={AI_PHOTO_LOCATION['Unternehmen']}
+        />
+      )}
       {(createEntity === 'kennzahlen' || dialogState?.entity === 'kennzahlen') && (
         <KennzahlenDialog
           open={createEntity === 'kennzahlen' || dialogState?.entity === 'kennzahlen'}
@@ -733,14 +746,6 @@ export default function AdminPage() {
           unternehmenList={(data as any).unternehmen ?? []}
           enablePhotoScan={AI_PHOTO_SCAN['Kennzahlen']}
           enablePhotoLocation={AI_PHOTO_LOCATION['Kennzahlen']}
-        />
-      )}
-      {viewState?.entity === 'unternehmen' && (
-        <UnternehmenViewDialog
-          open={viewState?.entity === 'unternehmen'}
-          onClose={() => setViewState(null)}
-          record={viewState?.record}
-          onEdit={(r: any) => { setViewState(null); setDialogState({ entity: 'unternehmen', record: r }); }}
         />
       )}
       {viewState?.entity === 'verpackungstypen' && (
@@ -768,6 +773,14 @@ export default function AdminPage() {
           record={viewState?.record}
           onEdit={(r: any) => { setViewState(null); setDialogState({ entity: 'regelstatus', record: r }); }}
           verpackungstypenList={(data as any).verpackungstypen ?? []}
+        />
+      )}
+      {viewState?.entity === 'unternehmen' && (
+        <UnternehmenViewDialog
+          open={viewState?.entity === 'unternehmen'}
+          onClose={() => setViewState(null)}
+          record={viewState?.record}
+          onEdit={(r: any) => { setViewState(null); setDialogState({ entity: 'unternehmen', record: r }); }}
         />
       )}
       {viewState?.entity === 'kennzahlen' && (

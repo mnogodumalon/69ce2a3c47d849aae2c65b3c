@@ -7,6 +7,14 @@ import os
 _t0 = time.time()
 _LOG_LEVEL = os.getenv("LOG_LEVEL", "warn").lower()
 
+def _actor_fields(parent_tool_use_id: str | None) -> dict:
+    """Build actor/parent_id pair used to distinguish main-agent from sub-agent frames."""
+    return {
+        "actor": "subagent" if parent_tool_use_id else "main",
+        "parent_id": parent_tool_use_id,
+    }
+
+
 async def _on_post_tool_use(input_data: dict, tool_use_id: str | None = None, context: dict | None = None) -> dict:
     """Log tool results after execution (only at debug level)."""
     if _LOG_LEVEL == "debug":
@@ -15,11 +23,48 @@ async def _on_post_tool_use(input_data: dict, tool_use_id: str | None = None, co
             response = input_data.get("tool_response", "")
             output = str(response)[:4000] if response else ""
             elapsed = round(time.time() - _t0, 1)
-            print(json.dumps({"type": "tool_result", "tool": tool, "output": output, "t": elapsed}), flush=True)
+            parent = input_data.get("parent_tool_use_id") or input_data.get("agent_id")
+            print(json.dumps({"type": "tool_result", "tool": tool, "output": output, "t": elapsed, **_actor_fields(parent)}), flush=True)
         except Exception as e:
             elapsed = round(time.time() - _t0, 1)
             print(json.dumps({"type": "tool_result", "tool": input_data.get("tool_name", "?"), "output": f"[hook error: {e}]", "t": elapsed}), flush=True)
     return {"continue_": True}
+
+
+# Files the main agent must NOT read — they belong exclusively to the form-polish sub-agent.
+# Defense-in-depth alongside the form_polish AgentDefinition: even with the prompt
+# moved inline, .placeholder-tasks.json still lives on disk as the sub-agent's
+# trigger/task-list. If the main agent reads it, it decides the instructions
+# apply to itself and duplicates the form-polish edits. Discriminator: sub-agent
+# tool_use_data has a non-empty `agent_id` string; main-agent's is absent or empty.
+_SUBAGENT_ONLY_FILES = (".placeholder-tasks.json",)
+
+async def _block_subagent_files_for_main_agent(input_data: dict, tool_use_id: str | None = None, context: dict | None = None) -> dict:
+    """Deny main-agent Read on files reserved for the form-polish sub-agent."""
+    file_path = input_data.get("tool_input", {}).get("file_path", "") or ""
+    if not any(marker in file_path for marker in _SUBAGENT_ONLY_FILES):
+        return {}
+
+    agent_id = input_data.get("agent_id")
+    parent_tool_use_id = input_data.get("parent_tool_use_id")
+    is_subagent = bool(
+        (isinstance(agent_id, str) and agent_id)
+        or (isinstance(parent_tool_use_id, str) and parent_tool_use_id)
+    )
+    if is_subagent:
+        return {}
+
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                "Diese Datei gehört dem Form-Polish Sub-Agent. "
+                "Du hast ihn bereits dispatched — gehe direkt zu Step 1 (Dashboard) "
+                "und bearbeite KEINE Form-Dateien (Dialoge, form-enhancements/*.ts, Reports)."
+            ),
+        }
+    }
 
 # Environment-specific configuration
 LA_API_URL = os.getenv("LA_API_URL", "https://my.living-apps.de/rest")
@@ -103,14 +148,26 @@ from '@/services/livingAppsService'. Do NOT build custom API calls or service fu
 - NEVER use Bash for file operations — use Read/Write/Edit tools only.
 - Rules of Hooks: ALL hooks MUST be BEFORE any early returns (loading/error).
 - IMPORT HYGIENE: Only import what you use.
-- ALWAYS reuse pre-generated {Entity}Dialog from '@/components/dialogs/{Entity}Dialog' for record creation/editing.
+- NEVER use the pre-generated {Entity}Dialog components inside the intent UI. \
+They are the generic CRUD modals (every field, photo-scan, etc.) and break the wizard flow. \
+Each step must have its own inline UI tailored to that step's task — show only the fields relevant \
+for the user's current decision, use the most ergonomic input method (date-range picker, tile-style \
+multi-select with prices, live total card, search-as-you-type). Call LivingAppsService.create<X>Entry() \
+directly on submit with correctly formatted fields. See .claude/skills/intent-ui/SKILL.md section \
+"NEVER use the pre-generated {Entity}Dialog inside an intent UI" for examples.
 - TOUCH-FRIENDLY: NEVER hide buttons behind hover.
-- Follow .claude/skills/intent-ui/SKILL.md for design patterns.
+- MANDATORY FIRST STEP: Before writing any code, Read `.claude/skills/intent-ui/SKILL.md` \
+in full. It is the authoritative source for design patterns AND critical API write rules \
+(lookup keys, applookup URLs, multipleapplookup arrays). Skipping it produces wrong code.
 - Do NOT run npm run build — the orchestrator handles that.
 - Do NOT touch any other files — only create the file you were given.
 - DEEP-LINKING: Use useSearchParams to read ?step= parameter. Initialize the wizard step from the URL \
 param so the dashboard can link directly to specific steps (e.g., ?eventId=xxx&step=2 skips to step 2). \
 When the user navigates between steps, update the URL params to keep them in sync.
+- NAVIGATION OUT: Never link the user from an intent UI to a CRUD subpage \
+(`#/buchungen`, `#/kunden`, `#/katzen`, …). Allowed link targets are ONLY: `#/` (dashboard) \
+or `#/intents/<other-slug>` (follow-up intent). On success, offer "Neue Buchung anlegen" \
+(reset wizard) and "Zurück zum Dashboard" — not "Zur Buchungsübersicht".
 
 CRITICAL API RULE — lookup fields when writing:
 When READING, lookups are objects: { key: 'x', label: 'X' }.
@@ -118,9 +175,295 @@ When WRITING (create/update via LivingAppsService), send ONLY the plain key stri
   ❌ status: { key: 'eingeladen', label: 'Eingeladen' }  → 400 error
   ✅ status: 'eingeladen'                                 → works
 For multiplelookup, send string array: ['a', 'b'], NOT [{key,label}, ...].
+
+CRITICAL API RULE — multipleapplookup fields when writing:
+The API expects null or an ARRAY of full record URLs (string[]). NEVER join, stringify,
+or send a single URL where a list is expected.
+  ✅ extras: ids.map(id => createRecordUrl(APP_IDS.X, id))   // string[]
+  ✅ extras: urls.length > 0 ? urls : undefined
+  ❌ extras: urls.join(',')                → 422 "type none or list expected, not str"
+  ❌ extras: createRecordUrl(APP_IDS.X, oneId)   // singular URL when list expected
+  ❌ extras: JSON.stringify(urls)
+Rule: if the form-state is a Set<id> or id[], map to URLs first, then pass the ARRAY directly.
 """
 
-SUBAGENT_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
+FORM_POLISH_PROMPT = """\
+# Form-Polish Sub-Agent — Aufgabenbeschreibung
+
+Du läufst im Sandbox-Build parallel zum Hauptagent. Der Hauptagent baut das
+Dashboard, du polierst die Formulare.
+
+Read `.placeholder-tasks.json` im Projekt-Root und befolge die folgenden Schritte
+für jede Entity im `tasks`-Array.
+
+---
+
+## SCHRITT 0 — Analyse pro Entity (VOR jedem Write, laut denken)
+
+Schreibe für jede Entity 3–6 Sätze deutsche Analyse, beginnend mit
+"Analyse <Entity>:". Inhalt:
+
+- welche Number-Felder es gibt (Kandidaten für computed)
+- welche Lookup-/Applookup-Felder es gibt (Kandidaten für defaults + applookup())
+- welche Felder wirken berechenbar — z. B.
+  - "menge × preis_pro_einheit"
+  - "arbeitsstunden × stundensatz" (über applookup auf den Mitarbeiter)
+  - "tage × tagespreis" → `dateDiff(anreise, abreise, days) * applookup(zimmer, tagespreis)`
+  - "stunden × stundensatz" → `dateDiff(start, ende, hours) * applookup(mitarbeiter, stundensatz)`
+  - "summe + nebenkosten"
+
+**PFLICHT-CHECK bei zwei Datumsfeldern als Paar** (anreise/abreise, von/bis,
+start/ende, eingang/ausgang, ankunft/abreise).
+
+`a`, `b`, `c` sind UNABHÄNGIGE computed-Einträge — jeder bekommt seine eigene
+Zeile in `computed: { … }`. NIEMALS zusammenfassen, nie weglassen weil "der
+dateDiff steckt ja schon in der Gesamtkosten-Formel". Beispiel für eine
+Aufenthalts-Entity am Ende dieses Blocks zeigt alle drei gleichzeitig.
+
+### a) PFLICHT — Dauer-Berechnung (immer setzen, auch ohne Preis)
+
+Zwei mögliche Varianten — beide ggf. PARALLEL setzen, NICHT entweder/oder:
+
+**a.1) Wenn ein echtes Number-Feld für die Dauer existiert** (key/label enthält
+`naechte|nights|dauer|tage|days|anzahl_naechte|anzahl_tage|anzahl_stunden`):
+setze computed direkt auf diesen ECHTEN Key. Beispiel mit Feld `anzahl_naechte`:
+
+```
+'anzahl_naechte': 'dateDiff(checkin_datum, checkout_datum, days)'
+```
+
+Damit füllt sich der existierende Input automatisch — User sieht die Dauer
+DIREKT im richtigen Eingabefeld und kann notfalls überschreiben.
+
+**a.2) ZUSÄTZLICH (immer) — Virtueller Dauer-Key** für die Aggregat-Anzeige
+unten im Dialog. Key beginnt mit `_` und kommt NICHT in `fields` vor.
+**Schreibe Umlaute direkt im Key** (JS/TS/Vite unterstützen Unicode-Identifier
+nativ — `'_aufenthalt_dauer_nächte'` statt `'_aufenthalt_dauer_naechte'`).
+Der Label im Dialog wird aus dem Key abgeleitet, daher landen ASCII-Codings
+wie `ae`/`oe`/`ue` wörtlich in der UI ("Naechte" statt "Nächte"). Wert:
+gleicher dateDiff wie in (a.1):
+
+```
+'_aufenthalt_dauer_nächte': 'dateDiff(aufenthalt_ankunft, aufenthalt_abreise, days)'
+```
+
+Wenn KEIN echtes Dauer-Feld in (a.1) existiert, ist nur (a.2) Pflicht.
+Wenn ein echtes Dauer-Feld existiert, sind BEIDE Pflicht — sie zeigen den
+gleichen Wert an zwei Stellen (Input + Aggregat). Das ist gewollte
+Redundanz: das Aggregat erinnert den User auch dann an die Dauer, wenn er
+den Input bereits manuell überschrieben hat.
+
+### b) Wenn die Entity ZUSÄTZLICH einen applookup auf eine "preis"-/"satz"-Spalte hat
+
+(tagespreis, stundensatz, kosten_pro_tag), ist `dateDiff(from, to, unit) * applookup(...)`
+fast immer die richtige computed-Formel für ein Gesamtkosten-Feld. Das ist ein
+SEPARATER Eintrag — der virtuelle Dauer-Key aus (a) bleibt zusätzlich bestehen.
+
+### c) AUFENTHALTS-ENTITY-HEURISTIK (überstimmt Punkt b bei Namens-Match)
+
+Wenn der ENTITY-Name eines dieser Wörter enthält (case-insensitive) —
+`aufenthalt`, `buchung`, `reservierung`, `booking`, `stay`, `mietzeit`,
+`vermietung`, `kursteilnahme`, `teilnahme`, `anmeldung` — UND ein Datumspaar
+vorhanden ist UND ein Gesamtkosten-/Preis-Number-Feld existiert (key/label
+enthält "gesamt", "kosten", "preis", "summe", "betrag") UND ein applookup auf
+irgendein numerisches Preis-/Kosten-Feld existiert (Spalte muss NICHT
+"tagespreis" heißen — `preis`, `kosten`, `betrag`, `gebuehr` reichen) → setze
+IMMER:
+
+```
+'gesamtkosten_key': 'dateDiff(from, to, days) * applookup(lookup_key, preis_key)'
+```
+
+Begründung: Bei Aufenthalten/Buchungen ist die User-Erwartung IMMER Tage × Preis
+— auch wenn die Preis-Spalte semantisch mehrdeutig ist (Einzelpreis vs.
+Tagespreis). Lieber falsch multiplizieren als leere Berechnung. Der User
+korrigiert das Ergebnis im Number-Input manuell, falls nötig (clearing →
+restore computed).
+
+Schwache Begründungen wie "Leistungen optional", "Preis ist Einzelpreis" oder
+"nicht eindeutig" sind bei Aufenthalts-Entities VERBOTEN — die Formel wird
+trotzdem gesetzt.
+
+### VOLLSTÄNDIGES BEISPIEL für eine Buchungs-Entity mit echtem `anzahl_naechte`-Feld
+
+```ts
+computed: {
+  // (a.1) Echtes Anzahl-Nächte-Feld — füllt den Input automatisch
+  'anzahl_naechte':
+    'dateDiff(checkin_datum, checkout_datum, days)',
+  // (a.2) Virtueller Dauer-Key — Aggregat-Hinweis unten im Dialog
+  // (Umlaut DIREKT im Key — kein `naechte`, sondern `nächte`)
+  '_buchung_dauer_nächte':
+    'dateDiff(checkin_datum, checkout_datum, days)',
+  // (c) Gesamtpreis — Tage × Tagespreis (über applookup auf Zimmer)
+  'gesamtpreis':
+    'dateDiff(checkin_datum, checkout_datum, days) * applookup(zimmer, preis_pro_nacht)',
+}
+```
+
+Wenn keine echtes Dauer-Feld existiert (z. B. Aufenthalt ohne `anzahl_naechte`),
+entfällt nur (a.1) — (a.2) und (c) bleiben Pflicht.
+
+Alle drei Einträge sind unabhängig — der dateDiff in (c) ersetzt NICHT (a.1)/(a.2).
+
+### Abschluss der Analyse
+
+Liste am Ende: welche computed-Formeln du daraus planst — ODER warum du keine
+setzt (z. B. "reine Stammdaten, nichts berechenbar"). Erst NACH dieser Analyse
+mit Edits/Writes fortfahren. Ohne diese Analyse gilt die Entity als nicht
+bearbeitet.
+
+---
+
+## AUFGABE 1 — Placeholders (für jedes Feld in `fields`)
+
+**WICHTIG: Du editierst KEINE Dialog-Dateien.** Du schreibst EINE einzige
+JSON-Datei mit deinen Placeholder-Vorschlägen; ein Node-Skript trägt sie nach
+deinem Lauf deterministisch in die Dialoge ein. Das ist schneller (1× Write
+statt 30× Edit) und robuster (keine Patch-Fehler durch TSX-Quote-Escaping).
+
+1. Für JEDES Feld in den `tasks[*].fields` einen kurzen, hilfreichen deutschen
+   Placeholder erfinden. Nutze `entity`, `entity_context`, `label` und ggf.
+   `target_entity` / `options` aus dem Feld-Objekt für Domain-Kontext. Max
+   4 Wörter (Textarea darf länger sein), kein Punkt am Ende, NIE das Label
+   wiederholen. Pflicht: applookup-Felder (Combobox) und date-Felder
+   (DatePicker) NIEMALS überspringen — sonst sehen User leere Slots.
+
+   Beispiele:
+   - input "Buchungsnummer" → `"z. B. BU-2026-001"`
+   - applookup mit target_entity "Mitarbeiter" → `"Mitarbeiter wählen"` oder
+     `"Aus 22 Mitarbeitern wählen"` wenn 'aus N' Sinn macht
+   - select mit options `["Vollzeit","Teilzeit","Minijob",…]` →
+     `"z. B. Vollzeit, Teilzeit"`
+   - date "Anreisedatum" → `"Wann kommt die Katze?"`
+   - textarea "Notizen" → `"Besonderheiten, Wünsche, Allergien..."`
+
+2. **EIN Write-Aufruf** auf `/home/user/app/.placeholder-suggestions.json`
+   mit ALLEN Vorschlägen. Format: Pro Eintrag in `tasks` ein Top-Level-Key
+   mit dem `file`-Basename (z. B. `"AufenthalteDialog.tsx"`), darunter ein
+   Map `{ key → placeholder-text }`.
+
+   Beispiel-Skelett (zeigt alle Feldtypen):
+   ```json
+   {
+     "ZimmerDialog.tsx": {
+       "zimmer_nummer":       "z. B. Z-101",
+       "zimmer_bezeichnung":  "z. B. Ruheraum Ost",
+       "zimmer_typ":          "Wähle einen Zimmertyp",
+       "zimmer_kapazitaet":   "z. B. 2",
+       "zimmer_beschreibung": "Ausstattung, Besonderheiten..."
+     },
+     "AufenthalteDialog.tsx": {
+       "aufenthalt_tier":         "Welches Tier kommt?",
+       "aufenthalt_zimmer":       "Welches Zimmer zuweisen?",
+       "aufenthalt_leistungen":   "Welche Leistung?",
+       "aufenthalt_ankunft":      "Wann kommt das Tier?",
+       "aufenthalt_abreise":      "Wann reist es ab?",
+       "aufenthalt_behandlung":   "Behandlung, Fütterung, Verhalten...",
+       "aufenthalt_gesamtkosten": "z. B. 234,50",
+       "aufenthalt_notizen":      "Spezielle Wünsche, Notizen..."
+     }
+   }
+   ```
+
+   Quote-Hinweis: Wert ist ein JSON-String. Verwende einfache Anführungszeichen
+   ('), keine doppelten ("). Der Apply-Script strippt doppelte Quotes
+   trotzdem als Sicherheit — kein Build-Bruch möglich.
+
+---
+
+## AUFGABE 2 — Form-Enhancements (nur wenn `formEnhancements`-Feld vorhanden)
+
+Befolge die Heuristik unten für fieldOrder, defaults UND computed. Sei bei
+defaults großzügig (Datum=heute, Anzahl=1, Status=erster offener Eintrag, …).
+Schreibe die Datei unter `formEnhancements.configPath` mit Write vollständig
+neu. Format:
+
+```ts
+import type { FormEnhancements } from './types';
+
+export const formEnhancements: FormEnhancements = {
+  // fieldOrder-Einträge sind ENTWEDER Strings ODER { row: [...], cols?: '...' }-
+  // Objekte für Spalten-Layouts (PLZ+Ort, Vorname+Nachname, etc.). Der Python-
+  // Generator hat row-Pairs im Skeleton vorgesetzt — behandle sie als unteilbare
+  // Atoms: umsortieren OK, in einzelne Strings auflösen verboten.
+  fieldOrder: ['key1', { row: ['plz','ort'], cols: '1fr 2fr' }, 'key2', ...],
+  defaults: {
+    // type 'date/date' → ohne withTime
+    'datum':   { kind: 'today' },
+    // type 'date/datetimeminute' → withTime: true (sonst falsches Format!)
+    'anreise': { kind: 'today',       withTime: true },
+    'abreise': { kind: 'todayOffset', days: 3, withTime: true },
+    // KEIN literal-Default für `naechte` o.ä., wenn der Key in `computed` als
+    // dateDiff vorkommt — siehe Regel unten "computed schlägt default NICHT".
+    // 'naechte': { kind: 'literal', value: 1 },  ← FALSCH bei dateDiff-computed
+    'status':  { kind: 'lookup', key: 'offen', label: 'Offen' },
+  },
+  computed: {                                         // sei großzügig — lieber produzieren als weglassen
+    // MODUS 1: Formel als String — Standard, immer bevorzugen.
+    // Erlaubte Bausteine: field(key), applookup(ownKey, lookupKey),
+    // dateDiff(from, to, days|hours), bare Zahlen, + - * /, Klammern.
+    // Ein Build-Step parst die Strings vor `npm run build` zu Trees.
+    'mwst':        'field(netto) * 0.19',
+    'gesamtpreis': 'applookup(zimmer, tagespreis) * dateDiff(anreise, abreise, days) + applookup(zusatzleistung, preis)',
+    // MODUS 2: Inline-Funktion — NUR wenn Formel nicht reicht (Conditionals,
+    // Schleifen, Multi-Lookup-Summen, Lookup-Switches). Pure Funktion mit ctx-API.
+    'gesamtpreis_mit_einheit': (fields, ctx) => {
+      const basis  = (ctx.applookup('zimmer','tagespreis') ?? 0)
+                   * (ctx.dateDiff('anreise','abreise') ?? 0);
+      const zPreis = ctx.applookup('zusatzleistung','preis') ?? 0;
+      const e      = ctx.applookupAny('zusatzleistung','preiseinheit');
+      const k      = (e && typeof e === 'object' && 'key' in e) ? (e as {key:string}).key : (typeof e === 'string' ? e : null);
+      const n      = ctx.dateDiff('anreise','abreise') ?? 0;
+      const zusatz = k === 'pro_tag'   ? zPreis * n
+                   : k === 'pro_woche' ? zPreis * (n / 7)
+                   :                     zPreis;     // einmalig / sonst
+      return basis + zusatz;
+    },
+  },
+};
+```
+
+Im Formel-Modus normale Mathematik: `*` und `/` binden stärker als `+` und `-`,
+Klammern zum Gruppieren erlaubt. Im Funktions-Modus DARF NUR `ctx.*` aufgerufen
+werden — kein fetch, kein localStorage, kein eval. Bei fehlenden Operanden
+returne `null` oder behandle als 0 — niemals NaN durchreichen.
+
+---
+
+## GANZ AM ENDE (zwei Schritte, in dieser Reihenfolge)
+
+1. Schreibe `.form-polish-report.json` (mit Write-Tool, nicht Bash) im Format:
+
+```json
+{
+  "entities": {
+    "Auftraege": {
+      "placeholders_set":  9,
+      "defaults_keys":    ["auftragsdatum", "status", "arbeitsstunden"],
+      "computed_keys":    ["arbeitskosten", "summe_arbeiten", "gesamt"],
+      "reason":           "Stunden × Stundensatz (Applookup Mitarbeiter) + Material × Preis"
+    },
+    "Kunden": {
+      "placeholders_set":  9,
+      "defaults_keys":    [],
+      "computed_keys":    [],
+      "reason":           "Reine Stammdaten, nichts berechenbar"
+    }
+  }
+}
+```
+
+Eine Zeile pro Entity. `reason` ist Pflicht — bei leerem `computed_keys` MUSST
+du erklären warum (nichts berechenbar / keine Applookup-Kette / kein
+Numerikfeld …).
+
+2. ERST DANACH: `rm /home/user/app/.placeholder-tasks.json`
+
+Kurze Status-Antwort. Keine Re-Reads.
+"""
+
+SUBAGENT_TOOLS = ["Read", "Write", "Edit", "MultiEdit", "Bash", "Glob", "Grep"]
 
 # ── System prompt variants ──────────────────────────────────────────
 
@@ -137,7 +480,7 @@ SYSTEM_APPEND_DASHBOARD = (
     "- No Read-back after Write/Edit\n"
     "- No Read of files whose contents are in .scaffold_context\n"
     "- Read .scaffold_context FIRST to understand all generated files\n"
-    "- useDashboardData.ts, enriched.ts, enrich.ts, formatters.ts, ai.ts, chat-context.ts, ChatWidget.tsx: NEVER touch — use as-is\n"
+    "- useDashboardData.ts, enriched.ts, enrich.ts, formatters.ts, ai.ts, ChatWidget.tsx: NEVER touch — use as-is\n"
     "- src/config/ai-features.ts: MAY edit — set AI_PHOTO_SCAN['Entity'] = true to enable photo scan in dialogs\n"
     "- Rules of Hooks: ALL hooks (useState, useEffect, useMemo, useCallback) MUST be BEFORE any early returns (loading/error). Never place a hook after 'if (loading) return' or 'if (error) return'.\n"
     "- IMPORT HYGIENE: Only import what you actually use. TypeScript strict mode errors on unused imports. BEFORE calling Write, mentally trace every import — if it doesn't appear in the JSX/logic body, remove it.\n"
@@ -153,7 +496,7 @@ SYSTEM_APPEND_ORCHESTRATOR = (
     "- NEVER use Bash for file operations (no cat, echo, heredoc, >, >>). ALWAYS use Read/Write/Edit tools.\n"
     "- index.css: NEVER touch — pre-generated design system. CRUD pages/dialogs: NEVER touch.\n"
     "- Layout.tsx: NEVER touch — sidebar navigation is pre-generated.\n"
-    "- useDashboardData.ts, enriched.ts, enrich.ts, formatters.ts, ai.ts, chat-context.ts, ChatWidget.tsx: NEVER touch\n"
+    "- useDashboardData.ts, enriched.ts, enrich.ts, formatters.ts, ai.ts, ChatWidget.tsx: NEVER touch\n"
     "- Rules of Hooks: ALL hooks MUST be BEFORE any early returns.\n"
     "- IMPORT HYGIENE: Only import what you actually use.\n"
     "- After 'npm run build' succeeds, STOP immediately."
@@ -164,17 +507,25 @@ async def main():
     # Build phase support for two-phase builds
     build_phase = os.getenv('BUILD_PHASE', 'all')  # "dashboard", "intents", or "all"
 
-    # Subagent definitions — only needed for phases that use orchestration
-    agents = None
+    # Subagent definitions. form_polish is registered in every phase (also
+    # "dashboard") so the main-agent can dispatch it via subagent_type="form_polish"
+    # without having to read a prompt file from disk. intent_builder is only
+    # needed when the build includes the intents phase.
+    agents = {
+        "form_polish": AgentDefinition(
+            description="Polishes generated CRUD forms: fills placeholder=\"\" with helpful hints, writes per-entity formEnhancements configs (fieldOrder, defaults, computed formulas), and produces .form-polish-report.json. Runs from .placeholder-tasks.json as task list.",
+            prompt=FORM_POLISH_PROMPT,
+            tools=SUBAGENT_TOOLS,
+            model="haiku",
+        ),
+    }
     if build_phase in ("intents", "all"):
-        agents = {
-            "intent_builder": AgentDefinition(
-                description="Builds one intent-specific UI page from scratch. Give it the file path to create and the intent description.",
-                prompt=INTENT_BUILDER_PROMPT,
-                tools=SUBAGENT_TOOLS,
-                model="inherit",
-            ),
-        }
+        agents["intent_builder"] = AgentDefinition(
+            description="Builds one intent-specific UI page from scratch. Give it the file path to create and the intent description.",
+            prompt=INTENT_BUILDER_PROMPT,
+            tools=SUBAGENT_TOOLS,
+            model="inherit",
+        )
 
     # Select system prompt based on build phase
     if build_phase == "dashboard":
@@ -184,6 +535,7 @@ async def main():
 
     options = ClaudeAgentOptions(
         hooks={
+            "PreToolUse": [HookMatcher(matcher="Read", hooks=[_block_subagent_files_for_main_agent], timeout=10)],
             "PostToolUse": [HookMatcher(matcher=None, hooks=[_on_post_tool_use], timeout=60)],
         },
         system_prompt={
@@ -191,6 +543,7 @@ async def main():
             "preset": "claude_code",
             "append": system_append,
         },
+        thinking={"type": "disabled"},
         setting_sources=["project"],
         permission_mode="bypassPermissions",
         disallowed_tools=["TodoWrite", "NotebookEdit", "WebFetch", "ExitPlanMode", "SlashCommand"],
@@ -198,15 +551,26 @@ async def main():
         model="claude-sonnet-4-6",
     )
 
-    # Only register agents when needed (Phase 2 / all)
-    if agents:
-        options.agents = agents
+    options.agents = agents
 
     # Session-Resume Unterstützung
+    # BUG: agents + resume crashes the Claude CLI (tested SDK 0.1.50 + 0.1.58).
+    # When `form_polish` runs as a formal AgentDefinition in Phase 1, the JSONL
+    # contains `subagent_type="form_polish"` tool-use blocks. On resume the CLI
+    # replays those blocks and tries to resolve the agent — if we drop `agents`,
+    # the type lookup fails inside __aenter__ and the SDK crashes before any of
+    # our code runs.
+    #
+    # The reverse trade-off works: keep agents registered, drop the resume.
+    # Phase 2 then starts as a fresh session (no Phase-1 conversation history),
+    # but the agent registry stays consistent and `intent_builder` can still run.
     resume_session_id = os.getenv('RESUME_SESSION_ID')
+    if agents and resume_session_id:
+        print(f"[KLAR] Skipping resume (agents + resume = SDK crash)")
+        resume_session_id = None
     if resume_session_id:
         options.resume = resume_session_id
-        print(f"[LILO] Resuming session: {resume_session_id}")
+        print(f"[KLAR] Resuming session: {resume_session_id}")
 
     # User Prompt - prefer file over env var (handles special chars better)
     user_prompt = None
@@ -217,14 +581,14 @@ async def main():
             with open(prompt_file, 'r') as f:
                 user_prompt = f.read().strip()
             if user_prompt:
-                print(f"[LILO] Prompt aus Datei gelesen: {len(user_prompt)} Zeichen")
+                print(f"[KLAR] Prompt aus Datei gelesen: {len(user_prompt)} Zeichen")
         except Exception as e:
-            print(f"[LILO] Fehler beim Lesen der Prompt-Datei: {e}")
+            print(f"[KLAR] Fehler beim Lesen der Prompt-Datei: {e}")
 
     if not user_prompt:
         user_prompt = os.getenv('USER_PROMPT')
         if user_prompt:
-            print(f"[LILO] Prompt aus ENV gelesen")
+            print(f"[KLAR] Prompt aus ENV gelesen")
 
     # Build instructions — optional user notes for fresh builds (NOT continue mode)
     user_instructions = None
@@ -234,14 +598,14 @@ async def main():
             with open(instructions_file, 'r') as f:
                 user_instructions = f.read().strip()
             if user_instructions:
-                print(f"[LILO] User instructions aus Datei gelesen: {len(user_instructions)} Zeichen")
+                print(f"[KLAR] User instructions aus Datei gelesen: {len(user_instructions)} Zeichen")
         except Exception as e:
-            print(f"[LILO] Fehler beim Lesen der User-Instructions-Datei: {e}")
+            print(f"[KLAR] Fehler beim Lesen der User-Instructions-Datei: {e}")
 
     if not user_instructions:
         user_instructions = os.getenv('USER_INSTRUCTIONS')
         if user_instructions:
-            print(f"[LILO] User instructions aus ENV gelesen")
+            print(f"[KLAR] User instructions aus ENV gelesen")
 
     if user_prompt:
         # Continue/Resume-Mode: Custom prompt vom User (no subagents, direct editing)
@@ -263,7 +627,7 @@ PFLICHT-SCHRITTE (alle müssen ausgeführt werden):
 
 Das Dashboard existiert bereits. Mache NUR die angeforderten Änderungen, nicht mehr.
 Starte JETZT mit Schritt 1!"""
-        print(f"[LILO] Continue-Mode mit User-Prompt: {user_prompt}")
+        print(f"[KLAR] Continue-Mode mit User-Prompt: {user_prompt}")
 
     elif build_phase == "dashboard":
         # Phase 1: Identical to actions branch — direct agent, no orchestrator overhead
@@ -285,9 +649,9 @@ Starte JETZT mit Schritt 1!"""
                 f"The user instructions above are ADDITIONS on top of your normal work, not replacements. "
                 f"Implement both: everything you would build anyway PLUS what the user asked for."
             )
-            print(f"[LILO] Phase 1: Dashboard build MIT User Instructions: {user_instructions}")
+            print(f"[KLAR] Phase 1: Dashboard build MIT User Instructions: {user_instructions}")
         else:
-            print(f"[LILO] Phase 1: Dashboard build (direct, no subagent)")
+            print(f"[KLAR] Phase 1: Dashboard build (direct, no subagent)")
 
     elif build_phase == "intents":
         # Phase 2: Only intent builders — dashboard already deployed
@@ -340,7 +704,31 @@ The DashboardOverview.tsx is ALREADY BUILT and deployed. Do NOT rebuild it from 
 
 1. ANALYZE entities, fields, relationships. Identify 2-3 DISTINCT multi-entity workflow phases.
 
-2. DISPATCH 'intent_builder' subagents IN PARALLEL (in a single response) for each intent:
+**DECISION GATE — MOST WORKFLOWS BELONG IN THE DASHBOARD, NOT IN INTENT UIs:** \
+The dashboard already has interactive, domain-specific UIs with full CRUD. \
+Intent UIs are separate pages — they are ONLY justified when a workflow is SO COMPLEX \
+that it would overload the dashboard (5+ steps, 3+ entities in a single flow, \
+branching logic, or heavy state tracking like budgets/progress across steps). \
+\
+Ask yourself: "Can this workflow be handled by the dashboard + existing CRUD dialogs?" \
+If YES → skip intent UIs, just run 'npm run build' and STOP. \
+\
+SKIP intent UIs when: \
+- The app has fewer than 4 entities \
+- Workflows can be handled by the dashboard + existing CRUD dialogs \
+- There are no workflows spanning 3+ entities in a single multi-step sequence \
+\
+Only proceed if there is at least ONE workflow that genuinely \
+cannot fit in the dashboard because of its complexity. \
+\
+**IF SKIPPING:** The dashboard currently shows WorkflowPlaceholders (loading skeletons). \
+You MUST clean them up before stopping: \
+1. Edit src/App.tsx — remove the WorkflowPlaceholders import and replace \
+   `<><div className="mb-8"><WorkflowPlaceholders /></div><DashboardOverview /></>` \
+   with just `<DashboardOverview />` \
+2. Run 'npm run build' and STOP.
+
+2. IF intent UIs are justified, DISPATCH 'intent_builder' subagents IN PARALLEL (in a single response) for each intent:
    - File path: src/pages/intents/{PascalCaseName}Page.tsx
    - DETAILED step-by-step description: what are the STEPS of the workflow, which entities are touched \
 in each step, what records get created/updated, what live feedback to show between steps
@@ -354,11 +742,13 @@ Props: items (id, title, subtitle, status, stats), onSelect
      * StatusBadge from '@/components/StatusBadge' — universal status badge. Props: statusKey, label
    - Tell it to import types, APP_IDS, LivingAppsService, extractRecordId, createRecordUrl from the scaffold
    - Remind: lookup fields when WRITING use plain string keys, NOT {key, label} objects
-   - CRITICAL: Tell it which {Entity}Dialog components exist and MUST be used for record creation. \
-List ALL available dialogs by name (e.g., "ArtikelDialog from '@/components/dialogs/ArtikelDialog'") \
-and their list props (e.g., "einkaufsgruppeList={einkaufsgruppe}"). \
-The intent builder MUST use these dialogs for creating new records — NEVER build inline forms. \
-Every step that involves selecting a record must ALSO show a "Neu erstellen" button opening the dialog.
+   - CRITICAL — do NOT use any pre-generated {Entity}Dialog inside the intent UI. \
+The {Entity}Dialog components are the generic CRUD forms with every field and a photo-scan modal — \
+they break the intent flow. The intent builder MUST build a task-tailored inline UI per step, \
+showing only the fields relevant for that step's decision and the most ergonomic input method \
+(date-range picker, tile-style multi-select, live total card, etc.). Submit calls \
+LivingAppsService.create<X>Entry() directly with correctly formatted fields (lookup = plain key string, \
+applookup = full URL via createRecordUrl, multipleapplookup = string[] of URLs).
 
 DO NOT dispatch 'dashboard_builder'.
 
@@ -379,7 +769,7 @@ at the TOP of the dashboard (before other content):
 
 CRITICAL: Dispatch ALL intent_builder subagents in a SINGLE response for maximum parallelism."""
 
-        print(f"[LILO] Phase 2: Intents-only build")
+        print(f"[KLAR] Phase 2: Intents-only build")
 
     else:
         # Build-Mode (all): Orchestrator dispatches subagents for dashboard + intent UIs
@@ -433,7 +823,31 @@ A workflow always involves creating/updating records across 2+ entities in a seq
 Identify 2-3 DISTINCT workflow phases (e.g., preparation phase vs. closing phase vs. reporting phase). \
 Check for redundancy — if two workflows share most steps, merge them into one wizard with deep-linking.
 
-2. DISPATCH ALL SUBAGENTS IN PARALLEL (in a single response):
+**DECISION GATE — MOST WORKFLOWS BELONG IN THE DASHBOARD, NOT IN INTENT UIs:** \
+The dashboard agent already builds interactive, domain-specific UIs with full CRUD. \
+Intent UIs are separate pages — they are ONLY justified when a workflow is SO COMPLEX \
+that it would overload the dashboard (5+ steps, 3+ entities in a single flow, \
+branching logic, or heavy state tracking like budgets/progress across steps). \
+\
+Ask yourself: "Can the dashboard agent build this as a section or interactive widget \
+on the main page?" If YES → it belongs in the dashboard, NOT in an intent UI. \
+\
+SKIP intent UIs when: \
+- The app has fewer than 4 entities \
+- Workflows can be handled by the dashboard + existing CRUD dialogs \
+- There are no workflows spanning 3+ entities in a single multi-step sequence \
+\
+Only proceed with intent UIs if there is at least ONE workflow that genuinely \
+cannot fit in the dashboard because of its complexity. \
+\
+**IF SKIPPING:** The dashboard currently shows WorkflowPlaceholders (loading skeletons). \
+You MUST clean them up before stopping: \
+1. Edit src/App.tsx — remove the WorkflowPlaceholders import and replace \
+   `<><div className="mb-8"><WorkflowPlaceholders /></div><DashboardOverview /></>` \
+   with just `<DashboardOverview />` \
+2. Run 'npm run build' and STOP.
+
+2. IF intent UIs are justified, DISPATCH ALL SUBAGENTS IN PARALLEL (in a single response):
    a) For EACH intent, dispatch 'intent_builder' with:
       - File path: src/pages/intents/{PascalCaseName}Page.tsx
       - DETAILED step-by-step description: what are the STEPS of the workflow, which entities are touched \
@@ -448,10 +862,13 @@ Props: items (id, title, subtitle, status, stats), onSelect
         * StatusBadge from '@/components/StatusBadge' — universal status badge. Props: statusKey, label
       - Tell it to import types, APP_IDS, LivingAppsService, extractRecordId, createRecordUrl from the scaffold
       - Remind: lookup fields when WRITING use plain string keys, NOT {key, label} objects
-      - CRITICAL: Tell it which {Entity}Dialog components exist and MUST be used for record creation. \
-List ALL available dialogs by name and their list props. \
-The intent builder MUST use these dialogs — NEVER inline forms. \
-Every step that involves selecting a record must ALSO show a "Neu erstellen" button opening the dialog.
+      - CRITICAL — do NOT use any pre-generated {Entity}Dialog inside the intent UI. \
+The {Entity}Dialog components are the generic CRUD forms with every field and a photo-scan modal — \
+they break the intent flow. The intent builder MUST build a task-tailored inline UI per step, \
+showing only the fields relevant for that step's decision and the most ergonomic input method \
+(date-range picker, tile-style multi-select, live total card, etc.). Submit calls \
+LivingAppsService.create<X>Entry() directly with correctly formatted fields (lookup = plain key string, \
+applookup = full URL via createRecordUrl, multipleapplookup = string[] of URLs).
 
 3. After ALL subagents complete:
    - Edit src/App.tsx to:
@@ -475,12 +892,12 @@ CRITICAL: Dispatch ALL subagents in a SINGLE response for maximum parallelism.""
                 f"\n\nADDITIONAL user instructions:\n"
                 f"<user-instructions>\n{user_instructions}\n</user-instructions>"
             )
-            print(f"[LILO] Orchestrator-Mode MIT User Instructions: {user_instructions}")
+            print(f"[KLAR] Orchestrator-Mode MIT User Instructions: {user_instructions}")
         else:
-            print(f"[LILO] Orchestrator-Mode: Dashboard + Intent UIs")
+            print(f"[KLAR] Orchestrator-Mode: Dashboard + Intent UIs")
 
     t_agent_total_start = time.time()
-    print(f"[LILO] Initialisiere Client")
+    print(f"[KLAR] Initialisiere Client")
 
     async with ClaudeSDKClient(options=options) as client:
 
@@ -495,31 +912,33 @@ CRITICAL: Dispatch ALL subagents in a SINGLE response for maximum parallelism.""
             t_last_step = now
 
             if isinstance(message, AssistantMessage):
+                actor = _actor_fields(message.parent_tool_use_id)
                 for block in message.content:
                     if isinstance(block, TextBlock):
-                        print(json.dumps({"type": "think", "content": block.text, "t": elapsed, "dt": dt}), flush=True)
+                        print(json.dumps({"type": "think", "content": block.text, "t": elapsed, "dt": dt, "model": message.model, **actor}), flush=True)
 
                     elif isinstance(block, ToolUseBlock):
-                        print(json.dumps({"type": "tool", "tool": block.name, "input": str(block.input), "t": elapsed, "dt": dt}), flush=True)
+                        print(json.dumps({"type": "tool", "tool": block.name, "tool_use_id": block.id, "input": str(block.input), "t": elapsed, "dt": dt, "model": message.model, **actor}), flush=True)
 
             elif isinstance(message, UserMessage):
                 if isinstance(message.content, list):
+                    actor = _actor_fields(message.parent_tool_use_id)
                     for block in message.content:
                         if isinstance(block, ToolResultBlock) and _LOG_LEVEL == "debug":
                             content = str(block.content)[:4000] if block.content else ""
-                            print(json.dumps({"type": "tool_result", "tool_use_id": block.tool_use_id, "output": content, "is_error": block.is_error, "t": elapsed}), flush=True)
+                            print(json.dumps({"type": "tool_result", "tool_use_id": block.tool_use_id, "output": content, "is_error": block.is_error, "t": elapsed, **actor}), flush=True)
 
             elif isinstance(message, ResultMessage):
                 status = "success" if not message.is_error else "error"
-                print(f"[LILO] Session ID: {message.session_id}")
+                print(f"[KLAR] Session ID: {message.session_id}")
 
                 if message.session_id:
                     try:
                         with open("/home/user/app/.claude_session_id", "w") as f:
                             f.write(message.session_id)
-                        print(f"[LILO] ✅ Session ID in Datei gespeichert")
+                        print(f"[KLAR] ✅ Session ID in Datei gespeichert")
                     except Exception as e:
-                        print(f"[LILO] ⚠️ Fehler beim Speichern der Session ID: {e}")
+                        print(f"[KLAR] ⚠️ Fehler beim Speichern der Session ID: {e}")
 
                 t_agent_total = time.time() - t_agent_total_start
                 print(json.dumps({
@@ -531,4 +950,11 @@ CRITICAL: Dispatch ALL subagents in a SINGLE response for maximum parallelism.""
                 }), flush=True)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"\n[KLAR] FATAL ERROR: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)

@@ -3,28 +3,22 @@
 export type LookupValue = { key: string; label: string };
 export type GeoLocation = { lat: number; long: number; info?: string };
 
-export interface Unternehmen {
-  record_id: string;
-  createdat: string;
-  updatedat: string | null;
-  fields: {
-    firmenname?: string;
-    strasse?: string;
-    hausnummer?: string;
-    plz?: string;
-    ort?: string;
-    laender?: string;
-    ansprechpartner_vorname?: string;
-    ansprechpartner_nachname?: string;
-    ansprechpartner_email?: string;
-    ansprechpartner_telefon?: string;
-    steuernummer?: string;
-    epr_registrierungsnummern?: string;
-    verantwortlich_vorname?: string;
-    verantwortlich_nachname?: string;
-    verantwortlich_funktion?: string;
-    verantwortlich_email?: string;
-  };
+export type AttachmentType = 'file' | 'note' | 'url' | 'json';
+export interface Attachment {
+  id: string;
+  type: AttachmentType;
+  label: string | null;
+  value: string | null;
+  active: boolean;
+  createdat?: string | null;
+  updatedat?: string | null;
+}
+
+export interface AttachmentInput {
+  type: AttachmentType;
+  label?: string;
+  value: string;
+  active?: boolean;
 }
 
 export interface Verpackungstypen {
@@ -98,6 +92,30 @@ export interface Regelstatus {
   };
 }
 
+export interface Unternehmen {
+  record_id: string;
+  createdat: string;
+  updatedat: string | null;
+  fields: {
+    firmenname?: string;
+    strasse?: string;
+    hausnummer?: string;
+    plz?: string;
+    ort?: string;
+    laender?: string;
+    ansprechpartner_vorname?: string;
+    ansprechpartner_nachname?: string;
+    ansprechpartner_email?: string;
+    ansprechpartner_telefon?: string;
+    steuernummer?: string;
+    epr_registrierungsnummern?: string;
+    verantwortlich_vorname?: string;
+    verantwortlich_nachname?: string;
+    verantwortlich_funktion?: string;
+    verantwortlich_email?: string;
+  };
+}
+
 export interface Kennzahlen {
   record_id: string;
   createdat: string;
@@ -128,10 +146,10 @@ export interface Kennzahlen {
 }
 
 export const APP_IDS = {
-  UNTERNEHMEN: '69ce2a10b74844016addd82e',
   VERPACKUNGSTYPEN: '69ce2a16a11c5c94e64a8724',
   NACHWEISE: '69ce2a186fb9551311abbd7f',
   REGELSTATUS: '69ce2a18409773a38eb18808',
+  UNTERNEHMEN: '69ce2a10b74844016addd82e',
   KENNZAHLEN: '69ce2a19555564c40eccb02c',
 } as const;
 
@@ -153,24 +171,6 @@ export const LOOKUP_OPTIONS: Record<string, Record<string, {key: string, label: 
 };
 
 export const FIELD_TYPES: Record<string, Record<string, string>> = {
-  'unternehmen': {
-    'firmenname': 'string/text',
-    'strasse': 'string/text',
-    'hausnummer': 'string/text',
-    'plz': 'string/text',
-    'ort': 'string/text',
-    'laender': 'string/text',
-    'ansprechpartner_vorname': 'string/text',
-    'ansprechpartner_nachname': 'string/text',
-    'ansprechpartner_email': 'string/email',
-    'ansprechpartner_telefon': 'string/tel',
-    'steuernummer': 'string/text',
-    'epr_registrierungsnummern': 'string/textarea',
-    'verantwortlich_vorname': 'string/text',
-    'verantwortlich_nachname': 'string/text',
-    'verantwortlich_funktion': 'string/text',
-    'verantwortlich_email': 'string/email',
-  },
   'verpackungstypen': {
     'unternehmen_ref': 'applookup/select',
     'verpackungs_id': 'string/text',
@@ -224,6 +224,24 @@ export const FIELD_TYPES: Record<string, Record<string, string>> = {
     'bewerter_nachname': 'string/text',
     'bewerter_abteilung': 'string/text',
   },
+  'unternehmen': {
+    'firmenname': 'string/text',
+    'strasse': 'string/text',
+    'hausnummer': 'string/text',
+    'plz': 'string/text',
+    'ort': 'string/text',
+    'laender': 'string/text',
+    'ansprechpartner_vorname': 'string/text',
+    'ansprechpartner_nachname': 'string/text',
+    'ansprechpartner_email': 'string/email',
+    'ansprechpartner_telefon': 'string/tel',
+    'steuernummer': 'string/text',
+    'epr_registrierungsnummern': 'string/textarea',
+    'verantwortlich_vorname': 'string/text',
+    'verantwortlich_nachname': 'string/text',
+    'verantwortlich_funktion': 'string/text',
+    'verantwortlich_email': 'string/email',
+  },
   'kennzahlen': {
     'unternehmen_kpi_ref': 'applookup/select',
     'berichtsjahr': 'number',
@@ -256,8 +274,8 @@ type StripLookup<T> = {
 };
 
 // Helper Types for creating new records (lookup fields as plain strings for API)
-export type CreateUnternehmen = StripLookup<Unternehmen['fields']>;
 export type CreateVerpackungstypen = StripLookup<Verpackungstypen['fields']>;
 export type CreateNachweise = StripLookup<Nachweise['fields']>;
 export type CreateRegelstatus = StripLookup<Regelstatus['fields']>;
+export type CreateUnternehmen = StripLookup<Unternehmen['fields']>;
 export type CreateKennzahlen = StripLookup<Kennzahlen['fields']>;

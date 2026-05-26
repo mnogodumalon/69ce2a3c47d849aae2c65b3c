@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { Nachweise, Verpackungstypen } from '@/types/app';
 import { APP_IDS } from '@/types/app';
-import { extractRecordId, createRecordUrl, cleanFieldsForApi, uploadFile, getUserProfile } from '@/services/livingAppsService';
+import { extractRecordId, createRecordUrl, cleanFieldsForApi, uploadFile, getUserProfile, LivingAppsService } from '@/services/livingAppsService';
 import {
   Dialog, DialogContent, DialogHeader,
   DialogTitle, DialogFooter,
@@ -9,14 +9,17 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { ComputedContext } from '@/config/form-enhancements/types';
+import { applyFieldOrder, flattenFieldOrder, applyDefaults, evalComputed, numberInputProps, clampNumberValue, classifyComputed, extractApplookupRefs, mergeApplookupRefs, resolveApplookupRef } from '@/config/form-enhancements/types';
+import { formEnhancements, computedDeps, computedApplookupRefs } from '@/config/form-enhancements/Nachweise';
+import { AttachmentsSection } from '@/components/AttachmentsSection';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Select, SelectContent, SelectItem,
-  SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { Combobox } from '@/components/Combobox';
+import { VerpackungstypenDialog } from '@/components/dialogs/VerpackungstypenDialog';
+import { DatePicker } from '@/components/DatePicker';
 import { Checkbox } from '@/components/ui/checkbox';
-import { IconCamera, IconCircleCheck, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
-import { fileToDataUri, extractFromPhoto, extractPhotoMeta, reverseGeocode, dataUriToBlob } from '@/lib/ai';
+import { IconCamera, IconChevronDown, IconCircleCheck, IconClipboard, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
+import { fileToDataUri, extractFromInput, extractPhotoMeta, reverseGeocode, dataUriToBlob } from '@/lib/ai';
 import { lookupKey } from '@/lib/formatters';
 
 interface NachweiseDialogProps {
@@ -24,14 +27,45 @@ interface NachweiseDialogProps {
   onClose: () => void;
   onSubmit: (fields: Nachweise['fields']) => Promise<void>;
   defaultValues?: Nachweise['fields'];
+  /** Record id when editing — enables the attachments section. Omit on create. */
+  recordId?: string;
   verpackungstypenList: Verpackungstypen[];
   enablePhotoScan?: boolean;
   enablePhotoLocation?: boolean;
 }
 
-export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, verpackungstypenList, enablePhotoScan = true, enablePhotoLocation = true }: NachweiseDialogProps) {
+export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, recordId, verpackungstypenList, enablePhotoScan = true, enablePhotoLocation = true }: NachweiseDialogProps) {
   const [fields, setFields] = useState<Partial<Nachweise['fields']>>({});
   const [saving, setSaving] = useState(false);
+  // Dirty-tracking: in edit-mode the Speichern button is disabled until the
+  // user actually changes something. JSON.stringify is good enough for our
+  // fields (plain values + LookupValue objects + string arrays).
+  const isDirty = useMemo(() => {
+    if (!defaultValues) return true;  // create-mode: always allow submit
+    try {
+      return JSON.stringify(fields) !== JSON.stringify(defaultValues);
+    } catch {
+      return true;
+    }
+  }, [fields, defaultValues]);
+  // Inline-Create state for "Verpackungstypen" target. The dropdown's
+  // "+ Neuer …" option opens a sub-dialog; on submit we POST, add the new
+  // record to the local `extraVerpackungstypen` list, and select it in
+  // the originating Combobox via the captured `createVerpackungstypenField`.
+  const [createVerpackungstypenOpen, setCreateVerpackungstypenOpen] = useState(false);
+  const [createVerpackungstypenInitial, setCreateVerpackungstypenInitial] = useState('');
+  const [createVerpackungstypenField, setCreateVerpackungstypenField] = useState<string>('');
+  const [extraVerpackungstypen, setExtraVerpackungstypen] = useState< Verpackungstypen[]>([]);
+  const verpackungstypenListAll = useMemo(
+    () => [...verpackungstypenList, ...extraVerpackungstypen],
+    [verpackungstypenList, extraVerpackungstypen],
+  );
+  function openCreateVerpackungstypen(fieldKey: string, q: string) {
+    setCreateVerpackungstypenField(fieldKey);
+    setCreateVerpackungstypenInitial(q);
+    setCreateVerpackungstypenOpen(true);
+  }
+  const [aiOpen, setAiOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -44,12 +78,47 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, verpac
   const [showProfileInfo, setShowProfileInfo] = useState(false);
   const [profileData, setProfileData] = useState<Record<string, unknown> | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [aiText, setAiText] = useState('');
+
+  // Computed-field plumbing. Pure no-op when formEnhancements.computed is {}.
+  // The number renderer uses computedValues only as a fallback when the user
+  // hasn't typed anything — clearing the input always restores the computation.
+  // computedContext exposes applookup list props so { kind: 'applookup', ... }
+  // operands can resolve to numeric fields on the target record.
+  const computedContext = useMemo<ComputedContext>(() => ({
+    lookupLists: {
+      'verpackungstyp_ref': verpackungstypenList,
+    },
+  }), [verpackungstypenList, ]);
+  const computedValues = useMemo<Record<string, number | null>>(() => {
+    let out: Record<string, number | null> = {};
+    const entries = Object.entries(formEnhancements.computed);
+    for (let i = 0; i < 5; i++) {
+      const merged: Record<string, unknown> = { ...(fields as Record<string, unknown>) };
+      for (const [k, v] of Object.entries(out)) {
+        if (v === null) continue;
+        const cur = merged[k];
+        if (cur === undefined || cur === null || cur === '') merged[k] = v;
+      }
+      const next: Record<string, number | null> = {};
+      let changed = false;
+      for (const [key, spec] of entries) {
+        const v = evalComputed(spec, merged, computedContext);
+        next[key] = v;
+        if (v !== out[key]) changed = true;
+      }
+      out = next;
+      if (!changed) break;
+    }
+    return out;
+  }, [fields, computedContext]);
 
   useEffect(() => {
     if (open) {
-      setFields(defaultValues ?? {});
+      setFields(applyDefaults((defaultValues ?? {}) as Record<string, unknown>, formEnhancements.defaults) as Partial<Nachweise['fields']>);
       setPreview(null);
       setScanSuccess(false);
+      setAiText('');
     }
   }, [open, defaultValues]);
   useEffect(() => {
@@ -73,7 +142,21 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, verpac
     e.preventDefault();
     setSaving(true);
     try {
-      const clean = cleanFieldsForApi({ ...fields }, 'nachweise');
+      // Fill empty number slots from computed values; user-typed values always win.
+      // CRITICAL: only backend-mapped keys may be backfilled. Virtual computeds
+      // (sub-agent invents `_netto`, `_bestellung_gesamtbetrag` etc. for the
+      // "Berechnungen" display) have no backend counterpart — writing them
+      // triggers a 422 from the Living-Apps API ("field does not exist").
+      const merged = { ...fields };
+      for (const [key, val] of Object.entries(computedValues)) {
+        if (val === null) continue;
+        if (!backendFieldSet.has(key)) continue;
+        const cur = (merged as Record<string, unknown>)[key];
+        if (cur === undefined || cur === null || cur === '') {
+          (merged as Record<string, unknown>)[key] = val;
+        }
+      }
+      const clean = cleanFieldsForApi(merged, 'nachweise');
       await onSubmit(clean as Nachweise['fields']);
       onClose();
     } finally {
@@ -81,22 +164,28 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, verpac
     }
   }
 
-  async function handlePhotoScan(file: File) {
+  async function handleAiExtract(file?: File) {
+    if (!file && !aiText.trim()) return;
     setScanning(true);
     setScanSuccess(false);
     try {
-      const [uri, meta] = await Promise.all([fileToDataUri(file), extractPhotoMeta(file)]);
-      if (file.type.startsWith('image/')) setPreview(uri);
-      const gps = enablePhotoLocation ? meta?.gps ?? null : null;
-      const parts: string[] = [];
+      let uri: string | undefined;
+      let gps: { latitude: number; longitude: number } | null = null;
       let geoAddr = '';
-      if (gps) {
-        geoAddr = await reverseGeocode(gps.latitude, gps.longitude);
-        parts.push(`Location coordinates: ${gps.latitude}, ${gps.longitude}`);
-        if (geoAddr) parts.push(`Reverse-geocoded address: ${geoAddr}`);
-      }
-      if (meta?.dateTime) {
-        parts.push(`Date taken: ${meta.dateTime.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3')}`);
+      const parts: string[] = [];
+      if (file) {
+        const [dataUri, meta] = await Promise.all([fileToDataUri(file), extractPhotoMeta(file)]);
+        uri = dataUri;
+        if (file.type.startsWith('image/')) setPreview(uri);
+        gps = enablePhotoLocation ? meta?.gps ?? null : null;
+        if (gps) {
+          geoAddr = await reverseGeocode(gps.latitude, gps.longitude);
+          parts.push(`Location coordinates: ${gps.latitude}, ${gps.longitude}`);
+          if (geoAddr) parts.push(`Reverse-geocoded address: ${geoAddr}`);
+        }
+        if (meta?.dateTime) {
+          parts.push(`Date taken: ${meta.dateTime.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3')}`);
+        }
       }
       const contextParts: string[] = [];
       if (parts.length) {
@@ -113,7 +202,12 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, verpac
       }
       const photoContext = contextParts.length ? contextParts.join('\n') : undefined;
       const schema = `{\n  "verpackungstyp_ref": string | null, // Display name from Verpackungstypen (see <available-records>)\n  "dokumentart": LookupValue | null, // Dokumentart (select one key: "zertifikat" | "laboranalyse" | "gutachten" | "sonstiges" | "pruefbericht") mapping: zertifikat=Zertifikat, laboranalyse=Laboranalyse, gutachten=Gutachten, sonstiges=Sonstiges, pruefbericht=Prüfbericht\n  "aussteller": string | null, // Aussteller\n  "ausstellungsdatum": string | null, // YYYY-MM-DD\n  "gueltig_bis": string | null, // YYYY-MM-DD\n  "dokument_url": string | null, // Dokument-Link (URL)\n  "nachweis_hinweise": string | null, // Hinweise / Anmerkungen\n}`;
-      const raw = await extractFromPhoto<Record<string, unknown>>(uri, schema, photoContext, DIALOG_INTENT);
+      const raw = await extractFromInput<Record<string, unknown>>(schema, {
+        dataUri: uri,
+        userText: aiText.trim() || undefined,
+        photoContext,
+        intent: DIALOG_INTENT,
+      });
       setFields(prev => {
         const merged = { ...prev } as Record<string, unknown>;
         function matchName(name: string, candidates: string[]): boolean {
@@ -133,15 +227,16 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, verpac
         return merged as Partial<Nachweise['fields']>;
       });
       // Upload scanned file to file fields
-      if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+      if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
         try {
-          const blob = dataUriToBlob(uri);
+          const blob = dataUriToBlob(uri!);
           const fileUrl = await uploadFile(blob, file.name);
           setFields(prev => ({ ...prev, dokument_datei: fileUrl }));
         } catch (uploadErr) {
           console.error('File upload failed:', uploadErr);
         }
       }
+      setAiText('');
       setScanSuccess(true);
       setTimeout(() => setScanSuccess(false), 3000);
     } catch (err) {
@@ -154,7 +249,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, verpac
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) handlePhotoScan(f);
+    if (f) handleAiExtract(f);
     e.target.value = '';
   }
 
@@ -176,28 +271,332 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, verpac
     setDragOver(false);
     const file = e.dataTransfer.files?.[0];
     if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
-      handlePhotoScan(file);
+      handleAiExtract(file);
     }
   }, []);
 
   const DIALOG_INTENT = defaultValues ? 'Nachweise bearbeiten' : 'Nachweise hinzufügen';
 
-  return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{DIALOG_INTENT}</DialogTitle>
-        </DialogHeader>
-
-        {enablePhotoScan && (
-          <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-            <div>
-              <div className="flex items-center gap-1.5 font-medium">
-                <IconSparkles className="h-4 w-4 text-primary" />
-                KI-Assistent
+  const fieldBlocks: Record<string, React.ReactNode> = {
+    'verpackungstyp_ref': (
+      <div key="verpackungstyp_ref" className="space-y-1.5">
+        <Label htmlFor="verpackungstyp_ref">Verpackungstyp</Label>
+        <Combobox
+          id="verpackungstyp_ref"
+          placeholder=""
+          items={verpackungstypenListAll.map(r => ({
+            id: r.record_id,
+            label: String(r.fields.verpackungs_id ?? r.record_id),
+          }))}
+          value={extractRecordId(fields.verpackungstyp_ref)}
+          onChange={id => setFields(f => ({ ...f, verpackungstyp_ref: id ? createRecordUrl(APP_IDS.VERPACKUNGSTYPEN, id) : undefined }))}
+          searchPlaceholder="Suchen…"
+          emptyText="Kein Treffer"
+          onCreateNew={(q) => openCreateVerpackungstypen("verpackungstyp_ref", q)}
+          createLabel="Neu in Verpackungstypen"
+        />
+      </div>
+    ),
+    'dokumentart': (
+      <div key="dokumentart" className="space-y-1.5">
+        <Label htmlFor="dokumentart">Dokumentart</Label>
+        <div role="radiogroup" className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={lookupKey(fields.dokumentart) === 'zertifikat'}
+            onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'zertifikat' ? undefined : 'zertifikat') as any }))}
+            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+              lookupKey(fields.dokumentart) === 'zertifikat'
+                ? 'bg-foreground text-background border-foreground'
+                : 'bg-background text-foreground border-input hover:bg-accent'
+            }`}
+          >
+            Zertifikat
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={lookupKey(fields.dokumentart) === 'laboranalyse'}
+            onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'laboranalyse' ? undefined : 'laboranalyse') as any }))}
+            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+              lookupKey(fields.dokumentart) === 'laboranalyse'
+                ? 'bg-foreground text-background border-foreground'
+                : 'bg-background text-foreground border-input hover:bg-accent'
+            }`}
+          >
+            Laboranalyse
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={lookupKey(fields.dokumentart) === 'gutachten'}
+            onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'gutachten' ? undefined : 'gutachten') as any }))}
+            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+              lookupKey(fields.dokumentart) === 'gutachten'
+                ? 'bg-foreground text-background border-foreground'
+                : 'bg-background text-foreground border-input hover:bg-accent'
+            }`}
+          >
+            Gutachten
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={lookupKey(fields.dokumentart) === 'sonstiges'}
+            onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'sonstiges' ? undefined : 'sonstiges') as any }))}
+            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+              lookupKey(fields.dokumentart) === 'sonstiges'
+                ? 'bg-foreground text-background border-foreground'
+                : 'bg-background text-foreground border-input hover:bg-accent'
+            }`}
+          >
+            Sonstiges
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={lookupKey(fields.dokumentart) === 'pruefbericht'}
+            onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'pruefbericht' ? undefined : 'pruefbericht') as any }))}
+            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+              lookupKey(fields.dokumentart) === 'pruefbericht'
+                ? 'bg-foreground text-background border-foreground'
+                : 'bg-background text-foreground border-input hover:bg-accent'
+            }`}
+          >
+            Prüfbericht
+          </button>
+        </div>
+      </div>
+    ),
+    'aussteller': (
+      <div key="aussteller" className="space-y-1.5">
+        <Label htmlFor="aussteller">Aussteller</Label>
+        <Input
+          id="aussteller"
+          placeholder=""
+          value={fields.aussteller ?? ''}
+          onChange={e => setFields(f => ({ ...f, aussteller: e.target.value }))}
+        />
+      </div>
+    ),
+    'ausstellungsdatum': (
+      <div key="ausstellungsdatum" className="space-y-1.5">
+        <Label htmlFor="ausstellungsdatum">Ausstellungsdatum</Label>
+        <DatePicker
+          id="ausstellungsdatum"
+          placeholder=""
+          mode="date"
+          value={fields.ausstellungsdatum ?? null}
+          onChange={v => setFields(f => ({ ...f, ausstellungsdatum: v ?? undefined }))}
+        />
+      </div>
+    ),
+    'gueltig_bis': (
+      <div key="gueltig_bis" className="space-y-1.5">
+        <Label htmlFor="gueltig_bis">Gültig bis</Label>
+        <DatePicker
+          id="gueltig_bis"
+          placeholder=""
+          mode="date"
+          value={fields.gueltig_bis ?? null}
+          onChange={v => setFields(f => ({ ...f, gueltig_bis: v ?? undefined }))}
+        />
+      </div>
+    ),
+    'dokument_datei': (
+      <div key="dokument_datei" className="space-y-1.5">
+        <Label htmlFor="dokument_datei">Dokument (Datei-Upload)</Label>
+        {fields.dokument_datei ? (
+          <div className="flex items-center gap-3 rounded-lg border p-2">
+            <div className="relative h-14 w-14 shrink-0 rounded-md bg-muted overflow-hidden">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <IconFileText size={20} className="text-muted-foreground" />
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">Versteht deine Fotos / Dokumente und füllt alles für dich aus</p>
+              <img
+                src={fields.dokument_datei}
+                alt=""
+                className="relative h-full w-full object-cover"
+                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
             </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm truncate text-foreground">{fields.dokument_datei.split("/").pop()}</p>
+              <div className="flex gap-2 mt-1">
+                <label
+                  className="text-xs text-primary hover:underline cursor-pointer"
+                >
+                  Ändern
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const fileUrl = await uploadFile(file, file.name);
+                        setFields(f => ({ ...f, dokument_datei: fileUrl }));
+                      } catch (err) { console.error('Upload failed:', err); }
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-destructive"
+                  onClick={() => setFields(f => ({ ...f, dokument_datei: undefined }))}
+                >
+                  Entfernen
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <label
+            className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
+          >
+            <IconUpload size={20} className="text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Datei hochladen</span>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const fileUrl = await uploadFile(file, file.name);
+                  setFields(f => ({ ...f, dokument_datei: fileUrl }));
+                } catch (err) { console.error('Upload failed:', err); }
+              }}
+            />
+          </label>
+        )}
+      </div>
+    ),
+    'dokument_url': (
+      <div key="dokument_url" className="space-y-1.5">
+        <Label htmlFor="dokument_url">Dokument-Link (URL)</Label>
+        <Input
+          id="dokument_url"
+          value={fields.dokument_url ?? ''}
+          onChange={e => setFields(f => ({ ...f, dokument_url: e.target.value }))}
+        />
+      </div>
+    ),
+    'nachweis_hinweise': (
+      <div key="nachweis_hinweise" className="space-y-1.5">
+        <Label htmlFor="nachweis_hinweise">Hinweise / Anmerkungen</Label>
+        <Textarea
+          id="nachweis_hinweise"
+          placeholder=""
+          value={fields.nachweis_hinweise ?? ''}
+          onChange={e => setFields(f => ({ ...f, nachweis_hinweise: e.target.value }))}
+          rows={3}
+        />
+      </div>
+    ),
+  };
+  const orderedFields = applyFieldOrder(Object.keys(fieldBlocks), formEnhancements.fieldOrder);
+  const orderedFieldsKey = orderedFields.map((it) => typeof it === 'string' ? it : it.row.join('+')).join(',');
+
+  // Render-Modell für Computed-Felder:
+  //
+  //   • BACKEND-FELDER mit computed-Eintrag (z.B. gesamtpreis bei einer
+  //     Katzenpension) bleiben als normales Eingabe-Feld stehen. Der Number-
+  //     Input nutzt den computed-Wert als Vorschlag, der User kann jederzeit
+  //     überschreiben (clearing → restore computed).
+  //   • VIRTUELLE computed-Keys (Eintrag in formEnhancements.computed, ABER
+  //     kein passendes Backend-Feld in orderedFields) erscheinen NICHT als
+  //     Input, sondern unten als kompakte 'Berechnungen'-Übersicht oder als
+  //     Inline-Hint unter dem letzten beitragenden Input.
+  const FIELD_LABELS: Record<string, string> = {"verpackungstyp_ref": "Verpackungstyp", "dokumentart": "Dokumentart", "aussteller": "Aussteller", "ausstellungsdatum": "Ausstellungsdatum", "gueltig_bis": "Gültig bis", "dokument_datei": "Dokument (Datei-Upload)", "dokument_url": "Dokument-Link (URL)", "nachweis_hinweise": "Hinweise / Anmerkungen"};
+  const CURRENCY_KEYS = new Set<string>([]);
+  // Applookup-Referenz-Labels: pro applookup-Feld in dieser Form (ownKey)
+  // eine Map { lookupKey: label } für ALLE Felder des Target-Schemas. Wird
+  // beim Render-Walk gefiltert auf die in der computed-Formel tatsächlich
+  // referenzierten lookupKeys (siehe applookupRefs unten).
+  const APPLOOKUP_LABELS: Record<string, Record<string, string>> = {"verpackungstyp_ref": {"unternehmen_ref": "Unternehmen", "verpackungs_id": "Verpackungs-ID", "verpackungsname": "Name der Verpackung", "beschreibung": "Beschreibung", "produktkategorie": "Produktkategorie", "verwendungszweck": "Verwendungszweck", "material_hauptkategorie": "Material-Hauptkategorie", "materialzusammensetzung": "Detaillierte Materialzusammensetzung", "material_einzelmaterialien": "Einzelmaterialien (Bezeichnung)", "material_prozentsaetze": "Materialanteile in %", "material_gewichte_g": "Materialgewichte in Gramm", "laenge_mm": "Länge (mm)", "breite_mm": "Breite (mm)", "hoehe_mm": "Höhe (mm)", "wandstaerke_mm": "Wandstärke (mm)", "volumen_ml": "Volumen (ml)", "gesamtgewicht_g": "Gesamtgewicht (g)", "rezyklat_postconsumer_prozent": "Post-Consumer-Rezyklatanteil (%)", "rezyklat_postconsumer_kg_jahr": "Post-Consumer-Rezyklat (kg/Jahr)", "rezyklat_postindustrial_prozent": "Post-Industrial-Rezyklatanteil (%)", "rezyklat_postindustrial_kg_jahr": "Post-Industrial-Rezyklat (kg/Jahr)", "recyclingfaehigkeit_kategorie": "Recyclingfähigkeit – Kategorie", "recyclingfaehigkeit_score": "Recyclingfähigkeit – Score (0–100)", "recyclingfaehigkeit_referenz": "Referenz Prüfstandard / Gutachten", "mehrwegfaehig": "Mehrwegfähig", "erwartete_umlaeufe": "Erwartete Umläufe", "ruecknahmesystem": "Beschreibung Rücknahmesystem", "ppwr_quoten_zuordnung": "Zuordnung zu PPWR-Quoten", "kennzeichnung_vollstaendig": "Kennzeichnung vollständig", "kennzeichnung_hinweise": "Hinweise zur Kennzeichnung"}};
+  const inputFields = useMemo(() => flattenFieldOrder(orderedFields), [orderedFieldsKey]);
+  const backendFieldSet = useMemo(() => new Set(inputFields), [inputFields.join(',')]);
+  const virtualComputed = useMemo(
+    () => Object.fromEntries(
+      Object.entries(formEnhancements.computed).filter(([k]) => !backendFieldSet.has(k)),
+    ),
+    [backendFieldSet],
+  );
+  const virtualFormEnhancements = useMemo(
+    () => ({ ...formEnhancements, computed: virtualComputed }),
+    [virtualComputed],
+  );
+  const computedLayout = useMemo(
+    () => classifyComputed(virtualFormEnhancements, inputFields, computedDeps),
+    [virtualFormEnhancements, inputFields.join(',')],
+  );
+  // Applookup-Referenzen: pro ownKey (Lookup-Feld im Form) die Liste der
+  // lookupKeys, die in irgendeiner computed-Formel referenziert werden.
+  // MODUS-1: aus dem Spec-Tree extrahiert. MODUS-2: aus dem Build-Time-
+  // Export computedApplookupRefs (parse-formulas hat Regex-Pairs gesammelt).
+  // Pro (ownKey, lookupKey)-Paar nur einmal; pro ownKey können aber mehrere
+  // lookupKeys gleichzeitig auftauchen (z.B. einzelpreis UND karten10_preis
+  // beim Yoga-Kurs), und alle werden separat als Inline-Hint gerendert.
+  const applookupRefs = useMemo(
+    () => mergeApplookupRefs(
+      extractApplookupRefs(formEnhancements.computed),
+      computedApplookupRefs,
+    ),
+    [],
+  );
+  function summaryLabel(k: string): string {
+    if (FIELD_LABELS[k]) return FIELD_LABELS[k];
+    // Leading underscore(s) als Virtual-Marker abstreifen; Unterstriche zu
+    // Leerzeichen, jedes Wort kapitalisieren. Umlaute kommen vom Sub-Agent
+    // direkt im Key (z. B. `_buchung_dauer_nächte`) — JS/TS/Vite unterstützen
+    // Unicode-Identifier nativ, daher keine ASCII-Transliteration nötig.
+    return k.replace(/^_+/, '')
+      .split('_')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  }
+  function formatSummaryValue(k: string, v: unknown): string {
+    if (v === undefined || v === null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return '—';
+    const n = typeof v === 'number' ? v : Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    // Backend-Feld mit €-Label ODER virtueller Computed-Key, dessen Name nach Geld aussieht.
+    const looksLikeCurrency = CURRENCY_KEYS.has(k) || /(?:kosten|preis|betrag|gesamt|netto|brutto|summe|mwst|rabatt|anzahlung|umsatz|saldo)/i.test(k);
+    if (looksLikeCurrency) {
+      return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+  }
+
+  return (
+    <>
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0">
+        <DialogHeader className="px-6 pt-5 pb-3 border-b flex flex-row items-center gap-3 space-y-0">
+          <DialogTitle className="flex-1 truncate text-left">{DIALOG_INTENT}</DialogTitle>
+          {enablePhotoScan && (
+            <button
+              type="button"
+              onClick={() => setAiOpen(o => !o)}
+              aria-expanded={aiOpen}
+              aria-controls="ai-fill-panel"
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all mr-7 shadow-sm ${
+                aiOpen
+                  ? 'bg-primary text-primary-foreground ring-2 ring-primary/30'
+                  : 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/15 hover:border-primary/50'
+              }`}
+            >
+              <IconSparkles className={`h-3.5 w-3.5 ${aiOpen ? '' : 'text-primary'}`} />
+              <span className="hidden sm:inline">KI-Ausfüllen</span>
+              <IconChevronDown className={`h-3 w-3 transition-transform ${aiOpen ? 'rotate-180' : ''}`} />
+            </button>
+          )}
+        </DialogHeader>
+        {enablePhotoScan && aiOpen && (
+          <div id="ai-fill-panel" className="border-b bg-muted/20 px-6 py-4 space-y-3">
+            <p className="text-xs text-muted-foreground">Versteht Fotos, Dokumente und Text und füllt alles für dich aus</p>
             <div className="flex items-start gap-2 pl-0.5">
               <Checkbox
                 id="ai-use-personal-info"
@@ -293,16 +692,16 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, verpac
               )}
             </div>
 
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" className="flex-1 h-9 text-xs" disabled={scanning}
+            <div className="grid grid-cols-3 gap-2">
+              <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); cameraInputRef.current?.click(); }}>
-                <IconCamera className="h-3.5 w-3.5 mr-1.5" />Kamera
+                <IconCamera className="h-3.5 w-3.5 mr-1" />Kamera
               </Button>
-              <Button type="button" variant="outline" size="sm" className="flex-1 h-9 text-xs" disabled={scanning}
+              <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-                <IconUpload className="h-3.5 w-3.5 mr-1.5" />Foto wählen
+                <IconUpload className="h-3.5 w-3.5 mr-1" />Foto wählen
               </Button>
-              <Button type="button" variant="outline" size="sm" className="flex-1 h-9 text-xs" disabled={scanning}
+              <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => {
                   e.stopPropagation();
                   if (fileInputRef.current) {
@@ -311,166 +710,184 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, verpac
                     setTimeout(() => { if (fileInputRef.current) fileInputRef.current.accept = 'image/*,application/pdf'; }, 100);
                   }
                 }}>
-                <IconFileText className="h-3.5 w-3.5 mr-1.5" />Dokument
+                <IconFileText className="h-3.5 w-3.5 mr-1" />Dokument
               </Button>
             </div>
+
+            <div className="relative">
+              <Textarea
+                placeholder="Text eingeben oder einfügen, z.B. Notizen, E-Mails, Beschreibungen..."
+                value={aiText}
+                onChange={e => {
+                  setAiText(e.target.value);
+                  const el = e.target;
+                  el.style.height = 'auto';
+                  el.style.height = Math.min(Math.max(el.scrollHeight, 56), 96) + 'px';
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && aiText.trim() && !scanning) {
+                    e.preventDefault();
+                    handleAiExtract();
+                  }
+                }}
+                disabled={scanning}
+                rows={2}
+                className="pr-12 resize-none text-sm overflow-y-auto"
+              />
+              <button
+                type="button"
+                className="absolute right-2 top-2 h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                disabled={scanning}
+                onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    if (text) setAiText(prev => prev ? prev + '\n' + text : text);
+                  } catch {}
+                }}
+                title="Paste"
+              >
+                <IconClipboard className="h-4 w-4" />
+              </button>
+            </div>
+            {aiText.trim() && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full h-9 text-xs"
+                disabled={scanning}
+                onClick={() => handleAiExtract()}
+              >
+                <IconSparkles className="h-3.5 w-3.5 mr-1.5" />Analysieren
+              </Button>
+            )}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="verpackungstyp_ref">Verpackungstyp</Label>
-            <Select
-              value={extractRecordId(fields.verpackungstyp_ref) ?? 'none'}
-              onValueChange={v => setFields(f => ({ ...f, verpackungstyp_ref: v === 'none' ? undefined : createRecordUrl(APP_IDS.VERPACKUNGSTYPEN, v) }))}
-            >
-              <SelectTrigger id="verpackungstyp_ref"><SelectValue placeholder="Auswählen..." /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">—</SelectItem>
-                {verpackungstypenList.map(r => (
-                  <SelectItem key={r.record_id} value={r.record_id}>
-                    {r.fields.verpackungs_id ?? r.record_id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="dokumentart">Dokumentart</Label>
-            <Select
-              value={lookupKey(fields.dokumentart) ?? 'none'}
-              onValueChange={v => setFields(f => ({ ...f, dokumentart: v === 'none' ? undefined : v as any }))}
-            >
-              <SelectTrigger id="dokumentart"><SelectValue placeholder="Auswählen..." /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">—</SelectItem>
-                <SelectItem value="zertifikat">Zertifikat</SelectItem>
-                <SelectItem value="laboranalyse">Laboranalyse</SelectItem>
-                <SelectItem value="gutachten">Gutachten</SelectItem>
-                <SelectItem value="sonstiges">Sonstiges</SelectItem>
-                <SelectItem value="pruefbericht">Prüfbericht</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="aussteller">Aussteller</Label>
-            <Input
-              id="aussteller"
-              value={fields.aussteller ?? ''}
-              onChange={e => setFields(f => ({ ...f, aussteller: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="ausstellungsdatum">Ausstellungsdatum</Label>
-            <Input
-              id="ausstellungsdatum"
-              type="date"
-              value={fields.ausstellungsdatum ?? ''}
-              onChange={e => setFields(f => ({ ...f, ausstellungsdatum: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="gueltig_bis">Gültig bis</Label>
-            <Input
-              id="gueltig_bis"
-              type="date"
-              value={fields.gueltig_bis ?? ''}
-              onChange={e => setFields(f => ({ ...f, gueltig_bis: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="dokument_datei">Dokument (Datei-Upload)</Label>
-            {fields.dokument_datei ? (
-              <div className="flex items-center gap-3 rounded-lg border p-2">
-                <div className="relative h-14 w-14 shrink-0 rounded-md bg-muted overflow-hidden">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <IconFileText size={20} className="text-muted-foreground" />
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 min-w-0">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-4 min-w-0">
+            {(() => {
+              const renderField = (k: string) => {
+                const inlineHints = computedLayout.anchors[k] ?? [];
+                const refs = applookupRefs[k] ?? [];
+                return (
+                  <div key={k} className="space-y-1.5 min-w-0">
+                    {fieldBlocks[k]}
+                    {refs.map(({ lookupKey }) => {
+                      // Show the live numeric value the formula will pull from
+                      // the selected lookup target (e.g. "Monatspreis: 34,90 €"
+                      // under the Tarif combobox). Hidden while no lookup is
+                      // selected or the target field is non-numeric.
+                      const v = resolveApplookupRef(k, lookupKey, fields as Record<string, unknown>, computedContext);
+                      if (v === null) return null;
+                      const lbl = APPLOOKUP_LABELS[k]?.[lookupKey] ?? lookupKey;
+                      const text = formatSummaryValue(lookupKey, v);
+                      return (
+                        <div key={`alh-${k}-${lookupKey}`} className="flex items-center gap-1.5 pl-3 text-xs text-muted-foreground">
+                          <span className="text-primary/70">→</span>
+                          <span>{lbl}</span>
+                          <span className="ml-auto font-medium tabular-nums text-foreground">{text}</span>
+                        </div>
+                      );
+                    })}
+                    {inlineHints.map((cKey) => {
+                      const v = computedValues[cKey];
+                      const text = formatSummaryValue(cKey, v);
+                      if (text === '—') return null;
+                      return (
+                        <div key={cKey} className="flex items-center gap-1.5 pl-3 text-xs text-muted-foreground">
+                          <span className="text-primary/70">→</span>
+                          <span>{summaryLabel(cKey)}</span>
+                          <span className="ml-auto font-medium tabular-nums text-foreground">{text}</span>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <img
-                    src={fields.dokument_datei}
-                    alt=""
-                    className="relative h-full w-full object-cover"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate text-foreground">{fields.dokument_datei.split("/").pop()}</p>
-                  <div className="flex gap-2 mt-1">
-                    <label
-                      className="text-xs text-primary hover:underline cursor-pointer"
-                    >
-                      Ändern
-                      <input
-                        type="file"
-                        accept="image/*,.pdf"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          try {
-                            const fileUrl = await uploadFile(file, file.name);
-                            setFields(f => ({ ...f, dokument_datei: fileUrl }));
-                          } catch (err) { console.error('Upload failed:', err); }
-                        }}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground hover:text-destructive"
-                      onClick={() => setFields(f => ({ ...f, dokument_datei: undefined }))}
-                    >
-                      Entfernen
-                    </button>
+                );
+              };
+              return orderedFields.map((item, idx) => {
+                if (typeof item === 'string') return renderField(item);
+                const cols = item.cols ?? `repeat(${item.row.length}, minmax(0, 1fr))`;
+                return (
+                  <div key={`row-${idx}`} className="grid gap-3" style={{ gridTemplateColumns: cols }}>
+                    {item.row.map(renderField)}
                   </div>
-                </div>
+                );
+              });
+            })()}
+            {(computedLayout.aggregates.length > 0 || computedLayout.finalTotal) && (
+              <div className="mt-6 pt-4 border-t border-border space-y-1.5">
+                {computedLayout.aggregates.length > 0 && (
+                  <dl className="space-y-1.5 pb-2">
+                    {computedLayout.aggregates.map((k) => {
+                      const userVal = (fields as Record<string, unknown>)[k];
+                      const computed = computedValues[k];
+                      const v = userVal !== undefined && userVal !== null && userVal !== '' ? userVal : computed;
+                      return (
+                        <div key={k} className="flex justify-between items-baseline gap-3">
+                          <dt className="text-sm text-muted-foreground truncate">{summaryLabel(k)}</dt>
+                          <dd className="text-sm font-medium tabular-nums whitespace-nowrap">{formatSummaryValue(k, v)}</dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                )}
+                {computedLayout.finalTotal && (() => {
+                  const k = computedLayout.finalTotal;
+                  const userVal = (fields as Record<string, unknown>)[k];
+                  const computed = computedValues[k];
+                  const v = userVal !== undefined && userVal !== null && userVal !== '' ? userVal : computed;
+                  // Innere Border nur wenn aggregates existieren — sonst hätten wir
+                  // zwei direkt aufeinanderfolgende Striche (Outer + Inner) mit nur
+                  // einer Aggregat-Zeile dazwischen → zu viel visuelles Rauschen.
+                  const sep = computedLayout.aggregates.length > 0 ? 'pt-3 border-t border-border' : 'pt-1';
+                  return (
+                    <div className={`flex justify-between items-baseline gap-3 ${sep}`}>
+                      <span className="text-base font-semibold text-foreground">{summaryLabel(k)}</span>
+                      <span className="text-lg font-bold tabular-nums whitespace-nowrap text-foreground">{formatSummaryValue(k, v)}</span>
+                    </div>
+                  );
+                })()}
               </div>
-            ) : (
-              <label
-                className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
-              >
-                <IconUpload size={20} className="text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Datei hochladen</span>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    try {
-                      const fileUrl = await uploadFile(file, file.name);
-                      setFields(f => ({ ...f, dokument_datei: fileUrl }));
-                    } catch (err) { console.error('Upload failed:', err); }
-                  }}
-                />
-              </label>
+            )}
+            {recordId && (
+              <div className="pt-2 border-t border-border">
+                <AttachmentsSection appId={APP_IDS.NACHWEISE} recordId={recordId} />
+              </div>
             )}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="dokument_url">Dokument-Link (URL)</Label>
-            <Input
-              id="dokument_url"
-              value={fields.dokument_url ?? ''}
-              onChange={e => setFields(f => ({ ...f, dokument_url: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="nachweis_hinweise">Hinweise / Anmerkungen</Label>
-            <Textarea
-              id="nachweis_hinweise"
-              value={fields.nachweis_hinweise ?? ''}
-              onChange={e => setFields(f => ({ ...f, nachweis_hinweise: e.target.value }))}
-              rows={3}
-            />
-          </div>
-          <DialogFooter>
+          <DialogFooter className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-3 gap-2">
             <Button type="button" variant="outline" onClick={onClose}>Abbrechen</Button>
-            <Button type="submit" disabled={saving}>
+            <Button
+              type="submit"
+              disabled={saving || !isDirty}
+            >
               {saving ? 'Speichern...' : defaultValues ? 'Speichern' : 'Erstellen'}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+    {createVerpackungstypenOpen && (
+      <VerpackungstypenDialog
+        open={createVerpackungstypenOpen}
+        onClose={() => setCreateVerpackungstypenOpen(false)}
+        onSubmit={async (newFields) => {
+          const result = await LivingAppsService.createVerpackungstypenEntry(newFields as any) as { id?: string };
+          if (result?.id) {
+            const newRec = { record_id: result.id, fields: newFields } as unknown as Verpackungstypen;
+            setExtraVerpackungstypen(prev => [...prev, newRec]);
+            const url = createRecordUrl(APP_IDS.VERPACKUNGSTYPEN, result.id);
+            setFields(prev => ({ ...prev, [createVerpackungstypenField]: url } as any));
+          }
+          setCreateVerpackungstypenOpen(false);
+        }}
+        defaultValues={createVerpackungstypenInitial
+          ? ({ verpackungs_id: createVerpackungstypenInitial } as any)
+          : undefined}
+        unternehmenList={[]}
+      />
+    )}
+    </>
   );
 }

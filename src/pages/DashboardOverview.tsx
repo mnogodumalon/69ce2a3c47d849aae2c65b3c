@@ -450,6 +450,7 @@ export default function DashboardOverview() {
           fetchAll();
         }}
         defaultValues={verpackungDialog.record?.fields}
+        recordId={verpackungDialog.record?.record_id}
         unternehmenList={unternehmen}
         enablePhotoScan={AI_PHOTO_SCAN['Verpackungstypen']}
       />

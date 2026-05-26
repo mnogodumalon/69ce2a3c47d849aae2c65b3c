@@ -108,6 +108,7 @@ export function BulkEditDialog({ open, onClose, onApply, fields, selectedCount, 
               ) : currentField.type === 'number' ? (
                 <Input
                   type="number"
+                  step="any"
                   value={value ?? ''}
                   onChange={e => setValue(e.target.value)}
                 />

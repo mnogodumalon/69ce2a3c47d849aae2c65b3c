@@ -230,6 +230,7 @@ export default function NachweisePage() {
         onClose={() => { setDialogOpen(false); setEditingRecord(null); }}
         onSubmit={editingRecord ? handleUpdate : handleCreate}
         defaultValues={editingRecord?.fields}
+        recordId={editingRecord?.record_id}
         verpackungstypenList={verpackungstypenList}
         enablePhotoScan={AI_PHOTO_SCAN['Nachweise']}
         enablePhotoLocation={AI_PHOTO_LOCATION['Nachweise']}
