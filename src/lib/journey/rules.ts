@@ -695,15 +695,6 @@ export const FIELD_RULES: Record<EntityKey, Record<string, FieldRule>> = {
       "writable": true,
       "maxLength": 4000
     },
-    "dokument_url": {
-      "key": "dokument_url",
-      "fulltype": "string/url",
-      "kind": "url",
-      "required": false,
-      "label": "Dokument-Link (URL)",
-      "writable": true,
-      "autoComplete": "url"
-    },
     "ausstellungsdatum": {
       "key": "ausstellungsdatum",
       "fulltype": "date/date",
@@ -727,6 +718,15 @@ export const FIELD_RULES: Record<EntityKey, Record<string, FieldRule>> = {
       "required": false,
       "label": "Dokument (Datei-Upload)",
       "writable": false
+    },
+    "dokument_url": {
+      "key": "dokument_url",
+      "fulltype": "string/url",
+      "kind": "url",
+      "required": false,
+      "label": "Dokument-Link (URL)",
+      "writable": true,
+      "autoComplete": "url"
     },
     "nachweis_hinweise": {
       "key": "nachweis_hinweise",

@@ -30,7 +30,6 @@ export function NachweiseDetails({
       <RecordSection title={t('details')} cols={2}>
         <RecordField label={fieldLabel('nachweise', 'dokumentart')} value={record.fields.dokumentart} format="pill" />
         <RecordField label={fieldLabel('nachweise', 'aussteller')} value={record.fields.aussteller} format="text" />
-        <RecordField label={fieldLabel('nachweise', 'dokument_url')} value={record.fields.dokument_url} format="url" />
         <RecordField label={fieldLabel('nachweise', 'ausstellungsdatum')} value={record.fields.ausstellungsdatum} format="date" />
         <RecordField label={fieldLabel('nachweise', 'gueltig_bis')} value={record.fields.gueltig_bis} format="date" />
         <RecordField label={fieldLabel('nachweise', 'dokument_datei')} className="md:col-span-2">
@@ -38,6 +37,7 @@ export function NachweiseDetails({
             <MediaThumbnail src={record.fields.dokument_datei as string} fit="contain" className="max-h-64 w-full rounded-lg" />
           ) : '—'}
         </RecordField>
+        <RecordField label={fieldLabel('nachweise', 'dokument_url')} value={record.fields.dokument_url} format="url" />
         <RecordField label={fieldLabel('nachweise', 'nachweis_hinweise')} value={record.fields.nachweis_hinweise} format="longtext" className="md:col-span-2" />
       </RecordSection>
 

@@ -140,10 +140,10 @@ export interface Nachweise {
     verpackungstyp_ref?: RecordUrl; // applookup -> URL zu 'Verpackungstypen' Record
     dokumentart?: LookupValue;
     aussteller?: string;
-    dokument_url?: string;
     ausstellungsdatum?: string; // Format: YYYY-MM-DD oder ISO String
     gueltig_bis?: string; // Format: YYYY-MM-DD oder ISO String
     dokument_datei?: string;
+    dokument_url?: string;
     nachweis_hinweise?: string;
   };
 }
@@ -282,10 +282,10 @@ export const FIELD_TYPES: Record<string, Record<string, string>> = {
     'verpackungstyp_ref': 'applookup/select',
     'dokumentart': 'lookup/select',
     'aussteller': 'string/text',
-    'dokument_url': 'string/url',
     'ausstellungsdatum': 'date/date',
     'gueltig_bis': 'date/date',
     'dokument_datei': 'file',
+    'dokument_url': 'string/url',
     'nachweis_hinweise': 'string/textarea',
   },
   'kennzahlen': {

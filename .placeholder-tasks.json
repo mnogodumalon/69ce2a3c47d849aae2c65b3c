@@ -795,11 +795,6 @@
           "type": "string/text"
         },
         {
-          "key": "dokument_url",
-          "label": "Dokument-Link (URL)",
-          "type": "string/url"
-        },
-        {
           "key": "ausstellungsdatum",
           "label": "Ausstellungsdatum",
           "type": "date/date"
@@ -808,6 +803,11 @@
           "key": "gueltig_bis",
           "label": "Gültig bis",
           "type": "date/date"
+        },
+        {
+          "key": "dokument_url",
+          "label": "Dokument-Link (URL)",
+          "type": "string/url"
         },
         {
           "key": "nachweis_hinweise",
@@ -910,12 +910,6 @@
             "required": true
           },
           {
-            "key": "dokument_url",
-            "label": "Dokument-Link (URL)",
-            "type": "string/url",
-            "required": false
-          },
-          {
             "key": "ausstellungsdatum",
             "label": "Ausstellungsdatum",
             "type": "date/date",
@@ -925,6 +919,12 @@
             "key": "gueltig_bis",
             "label": "Gültig bis",
             "type": "date/date",
+            "required": false
+          },
+          {
+            "key": "dokument_url",
+            "label": "Dokument-Link (URL)",
+            "type": "string/url",
             "required": false
           },
           {

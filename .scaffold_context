@@ -318,7 +318,7 @@ contracts; Read one only if the contract below is insufficient.
  *   verpackungstypen: unternehmen_ref, verpackungs_id, verpackungsname, beschreibung, produktkategorie, verwendungszweck, material_hauptkategorie, materialzusammensetzung, …  ·  → unternehmen · ← regelstatus (list + contextual +) · ← nachweise (list + contextual +)
  *   unternehmen: firmenname, strasse, hausnummer, plz, ort, laender, ansprechpartner_vorname, ansprechpartner_nachname, …  ·  ← verpackungstypen (list + contextual +) · ← kennzahlen (list + contextual +)
  *   regelstatus: verpackungstyp_status_ref, konformitaetsstatus, datanluecke_flag, problemfelder, status_kommentar, bewertungsdatum, bewerter_vorname, bewerter_nachname, …  ·  → verpackungstypen
- *   nachweise: verpackungstyp_ref, dokumentart, aussteller, dokument_url, ausstellungsdatum, gueltig_bis, dokument_datei, nachweis_hinweise  ·  → verpackungstypen
+ *   nachweise: verpackungstyp_ref, dokumentart, aussteller, ausstellungsdatum, gueltig_bis, dokument_datei, dokument_url, nachweis_hinweise  ·  → verpackungstypen
  *   kennzahlen: unternehmen_kpi_ref, berichtsjahr, standort, gesamtmenge_kg, menge_kunststoff_kg, menge_papier_pappe_kg, menge_glas_kg, menge_metall_kg, …  ·  → unternehmen
  */
 ```

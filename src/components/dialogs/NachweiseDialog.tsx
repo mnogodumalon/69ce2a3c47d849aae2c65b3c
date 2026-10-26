@@ -276,7 +276,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
         }
       }
       const photoContext = contextParts.length ? contextParts.join('\n') : undefined;
-      const schema = `{\n  "verpackungstyp_ref": string | null, // Display name from Verpackungstypen (see <available-records>)\n  "dokumentart": LookupValue | null, // Dokumentart (select one key: "pruefbericht" | "zertifikat" | "laboranalyse" | "gutachten" | "sonstiges") mapping: pruefbericht=Prüfbericht, zertifikat=Zertifikat, laboranalyse=Laboranalyse, gutachten=Gutachten, sonstiges=Sonstiges\n  "aussteller": string | null, // Aussteller\n  "dokument_url": string | null, // Dokument-Link (URL)\n  "ausstellungsdatum": string | null, // YYYY-MM-DD\n  "gueltig_bis": string | null, // YYYY-MM-DD\n  "nachweis_hinweise": string | null, // Hinweise / Anmerkungen\n}`;
+      const schema = `{\n  "verpackungstyp_ref": string | null, // Display name from Verpackungstypen (see <available-records>)\n  "dokumentart": LookupValue | null, // Dokumentart (select one key: "pruefbericht" | "zertifikat" | "laboranalyse" | "gutachten" | "sonstiges") mapping: pruefbericht=Prüfbericht, zertifikat=Zertifikat, laboranalyse=Laboranalyse, gutachten=Gutachten, sonstiges=Sonstiges\n  "aussteller": string | null, // Aussteller\n  "ausstellungsdatum": string | null, // YYYY-MM-DD\n  "gueltig_bis": string | null, // YYYY-MM-DD\n  "dokument_url": string | null, // Dokument-Link (URL)\n  "nachweis_hinweise": string | null, // Hinweise / Anmerkungen\n}`;
       const raw = await extractFromInput<Record<string, unknown>>(schema, {
         dataUri: uri,
         userText: aiText.trim() || undefined,
@@ -465,19 +465,6 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
         )}
       </div>
     ),
-    'dokument_url': (
-      <div key="dokument_url" className="space-y-1.5">
-        <Label htmlFor="dokument_url">{fieldLabel('nachweise', 'dokument_url')}</Label>
-        <Input
-          id="dokument_url"
-          type="url"
-          inputMode="url"
-          placeholder=""
-          value={fields.dokument_url ?? ''}
-          onChange={e => setFields(f => ({ ...f, dokument_url: e.target.value }))}
-        />
-      </div>
-    ),
     'ausstellungsdatum': (
       <div key="ausstellungsdatum" className="space-y-1.5">
         <Label htmlFor="ausstellungsdatum">{fieldLabel('nachweise', 'ausstellungsdatum')} <span className="text-destructive" aria-hidden="true">*</span></Label>
@@ -576,6 +563,19 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
         )}
       </div>
     ),
+    'dokument_url': (
+      <div key="dokument_url" className="space-y-1.5">
+        <Label htmlFor="dokument_url">{fieldLabel('nachweise', 'dokument_url')}</Label>
+        <Input
+          id="dokument_url"
+          type="url"
+          inputMode="url"
+          placeholder=""
+          value={fields.dokument_url ?? ''}
+          onChange={e => setFields(f => ({ ...f, dokument_url: e.target.value }))}
+        />
+      </div>
+    ),
     'nachweis_hinweise': (
       <div key="nachweis_hinweise" className="space-y-1.5">
         <Label htmlFor="nachweis_hinweise">{fieldLabel('nachweise', 'nachweis_hinweise')}</Label>
@@ -602,7 +602,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
   //     kein passendes Backend-Feld in orderedFields) erscheinen NICHT als
   //     Input, sondern unten als kompakte 'Berechnungen'-Übersicht oder als
   //     Inline-Hint unter dem letzten beitragenden Input.
-  const FIELD_LABELS: Record<string, string> = {"verpackungstyp_ref": "Verpackungstyp", "dokumentart": "Dokumentart", "aussteller": "Aussteller", "dokument_url": "Dokument-Link (URL)", "ausstellungsdatum": "Ausstellungsdatum", "gueltig_bis": "Gültig bis", "dokument_datei": "Dokument (Datei-Upload)", "nachweis_hinweise": "Hinweise / Anmerkungen"};
+  const FIELD_LABELS: Record<string, string> = {"verpackungstyp_ref": "Verpackungstyp", "dokumentart": "Dokumentart", "aussteller": "Aussteller", "ausstellungsdatum": "Ausstellungsdatum", "gueltig_bis": "Gültig bis", "dokument_datei": "Dokument (Datei-Upload)", "dokument_url": "Dokument-Link (URL)", "nachweis_hinweise": "Hinweise / Anmerkungen"};
   const CURRENCY_KEYS = new Set<string>([]);
   // Applookup-Referenz-Labels: pro applookup-Feld in dieser Form (ownKey)
   // eine Map { lookupKey: label } für ALLE Felder des Target-Schemas. Wird

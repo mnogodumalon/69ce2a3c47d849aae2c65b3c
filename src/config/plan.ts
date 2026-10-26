@@ -16,9 +16,12 @@ import { INTENTS } from '@/config/intents';
 
 export const SYSTEM_ASSIGNED: Record<string, string[]> = {};
 
-export const PLAN_SENTENCES: Record<string, string[]> = {};
+export const PLAN_SENTENCES: Record<string, string[]> = {
+  "verpackung-erfassen": [],
+  "jahresbericht-erfassen": []
+};
 
-export const PLAN_SUMMARY = "";
+export const PLAN_SUMMARY = "PPWR Compliance Manager";
 
 /** slug → the lists a flow writes (the plan's Schreibliste). The nav leaves a
  *  flow out for a user who may not write one of them (lib/permissions.ts). */

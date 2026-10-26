@@ -1743,10 +1743,10 @@ export const LABELS: Record<CoreLocale, LabelBundle> = {
           "verpackungstyp_ref": "Verpackungstyp",
           "dokumentart": "Dokumentart",
           "aussteller": "Aussteller",
-          "dokument_url": "Dokument-Link (URL)",
           "ausstellungsdatum": "Ausstellungsdatum",
           "gueltig_bis": "Gültig bis",
           "dokument_datei": "Dokument (Datei-Upload)",
+          "dokument_url": "Dokument-Link (URL)",
           "nachweis_hinweise": "Hinweise / Anmerkungen"
         },
         "lookups": {
@@ -1819,7 +1819,7 @@ export const LABELS: Record<CoreLocale, LabelBundle> = {
           "rezyklat_postindustrial_kg_jahr": "Post-Industrial Recycled Content (kg/year)",
           "recyclingfaehigkeit_kategorie": "Recyclability – Category",
           "recyclingfaehigkeit_score": "Recyclability – Score (0–100)",
-          "recyclingfaehigkeit_referenz": "Reference Test Standard / Expert Opinion",
+          "recyclingfaehigkeit_referenz": "Reference Test Standard / Expert Report",
           "mehrwegfaehig": "Reusable",
           "erwartete_umlaeufe": "Expected Reuse Cycles",
           "ruecknahmesystem": "Take-Back System Description",
@@ -1899,7 +1899,7 @@ export const LABELS: Record<CoreLocale, LabelBundle> = {
             "nicht_konform": "Non-Compliant"
           },
           "problemfelder": {
-            "rezyklatquote_zu_niedrig": "Recycled Content Target Too Low",
+            "rezyklatquote_zu_niedrig": "Recycled Content Rate Too Low",
             "nicht_recyclingfaehig": "Not Recyclable",
             "kennzeichnung_unvollstaendig": "Labeling Incomplete",
             "mehrwegpflicht_verletzt": "Reuse Obligation Violated (Single-Use Packaging)",
@@ -1915,10 +1915,10 @@ export const LABELS: Record<CoreLocale, LabelBundle> = {
           "verpackungstyp_ref": "Packaging Type",
           "dokumentart": "Document Type",
           "aussteller": "Issuer",
-          "dokument_url": "Document Link (URL)",
           "ausstellungsdatum": "Issue Date",
           "gueltig_bis": "Valid Until",
           "dokument_datei": "Document (File Upload)",
+          "dokument_url": "Document Link (URL)",
           "nachweis_hinweise": "Notes / Remarks"
         },
         "lookups": {
@@ -1926,7 +1926,7 @@ export const LABELS: Record<CoreLocale, LabelBundle> = {
             "pruefbericht": "Test Report",
             "zertifikat": "Certificate",
             "laboranalyse": "Laboratory Analysis",
-            "gutachten": "Expert Opinion",
+            "gutachten": "Expert Report",
             "sonstiges": "Other"
           }
         }
