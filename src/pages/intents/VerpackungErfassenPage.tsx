@@ -27,14 +27,7 @@ import {
   IconRefresh,
   IconPackage,
 } from '@tabler/icons-react';
-
-const WIZARD_STEPS = [
-  { label: 'Unternehmen' },
-  { label: 'Verpackungstyp' },
-  { label: 'Bewertung' },
-  { label: 'Nachweise' },
-  { label: 'Zusammenfassung' },
-];
+import { tx } from '@/i18n';
 
 function getKonformitaetsColor(key: string | undefined): string {
   if (key === 'konform') return 'bg-green-100 text-green-700 border-green-200';
@@ -73,6 +66,14 @@ function isExpired(dateStr: string | undefined): boolean {
 }
 
 export default function VerpackungErfassenPage() {
+  const WIZARD_STEPS = [
+  { label: tx('Unternehmen') },
+  { label: tx('Verpackungstyp') },
+  { label: tx('Bewertung') },
+  { label: tx('Nachweise') },
+  { label: tx('Zusammenfassung') },
+];
+
   const [searchParams, setSearchParams] = useSearchParams();
   const { unternehmen, verpackungstypen, nachweise, regelstatus, loading, error, fetchAll } = useDashboardData();
 
@@ -256,8 +257,8 @@ export default function VerpackungErfassenPage() {
 
   return (
     <IntentWizardShell
-      title="Verpackung erfassen & bewerten"
-      subtitle="Verpackungstyp registrieren und PPWR-Konformität prüfen"
+      title={tx('Verpackung erfassen & bewerten')}
+      subtitle={tx('Verpackungstyp registrieren und PPWR-Konformität prüfen')}
       steps={WIZARD_STEPS}
       currentStep={currentStep}
       onStepChange={handleStepChange}
@@ -273,8 +274,8 @@ export default function VerpackungErfassenPage() {
               <IconBuilding size={16} className="text-primary" />
             </div>
             <div>
-              <h2 className="text-base font-semibold">Unternehmen auswählen</h2>
-              <p className="text-xs text-muted-foreground">Wähle das Unternehmen, für das du eine Verpackung erfassen möchtest.</p>
+              <h2 className="text-base font-semibold">{tx('Unternehmen auswählen')}</h2>
+              <p className="text-xs text-muted-foreground">{tx('Wähle das Unternehmen, für das du eine Verpackung erfassen möchtest.')}</p>
             </div>
           </div>
           <EntitySelectStep
@@ -283,14 +284,14 @@ export default function VerpackungErfassenPage() {
               title: u.fields.firmenname ?? '—',
               subtitle: [u.fields.strasse, u.fields.hausnummer, u.fields.plz, u.fields.ort].filter(Boolean).join(' ') || (u.fields.ort ?? ''),
               stats: [
-                { label: 'Verpackungstypen', value: verpackungCountByUnternehmen[u.record_id] ?? 0 },
+                { label: tx('Verpackungstypen'), value: verpackungCountByUnternehmen[u.record_id] ?? 0 },
               ],
               icon: <IconBuilding size={18} className="text-primary" />,
             }))}
             onSelect={handleSelectUnternehmen}
-            searchPlaceholder="Unternehmen suchen..."
-            emptyText="Noch kein Unternehmen vorhanden."
-            createLabel="Neues Unternehmen anlegen"
+            searchPlaceholder={tx('Unternehmen suchen...')}
+            emptyText={tx('Noch kein Unternehmen vorhanden.')}
+            createLabel={tx('Neues Unternehmen anlegen')}
             onCreateNew={() => setUnternehmenDialogOpen(true)}
             createDialog={
               <UnternehmenDialog
@@ -322,7 +323,7 @@ export default function VerpackungErfassenPage() {
                 className="ml-auto shrink-0 text-xs"
                 onClick={() => setCurrentStep(1)}
               >
-                Ändern
+                {tx('Ändern')}
               </Button>
             </div>
           )}
@@ -332,11 +333,11 @@ export default function VerpackungErfassenPage() {
               <IconBox size={16} className="text-primary" />
             </div>
             <div>
-              <h2 className="text-base font-semibold">Verpackungstyp auswählen</h2>
+              <h2 className="text-base font-semibold">{tx('Verpackungstyp auswählen')}</h2>
               <p className="text-xs text-muted-foreground">
                 {filteredVerpackungstypen.length > 0
-                  ? `${filteredVerpackungstypen.length} Verpackungstypen für dieses Unternehmen`
-                  : 'Noch keine Verpackungstypen — leg eine neue an.'}
+                  ? tx`${filteredVerpackungstypen.length} Verpackungstypen für dieses Unternehmen`
+                  : tx('Noch keine Verpackungstypen — leg eine neue an.')}
               </p>
             </div>
           </div>
@@ -355,16 +356,16 @@ export default function VerpackungErfassenPage() {
                   ? { key: rs.fields.konformitaetsstatus.key, label: rs.fields.konformitaetsstatus.label }
                   : undefined,
                 stats: [
-                  ...(v.fields.material_hauptkategorie ? [{ label: 'Material', value: v.fields.material_hauptkategorie.label }] : []),
-                  ...(v.fields.verwendungszweck ? [{ label: 'Zweck', value: v.fields.verwendungszweck.label }] : []),
+                  ...(v.fields.material_hauptkategorie ? [{ label: tx('Material'), value: v.fields.material_hauptkategorie.label }] : []),
+                  ...(v.fields.verwendungszweck ? [{ label: tx('Zweck'), value: v.fields.verwendungszweck.label }] : []),
                 ],
                 icon: <IconPackage size={18} className="text-primary" />,
               };
             })}
             onSelect={handleSelectVerpackung}
-            searchPlaceholder="Verpackung suchen..."
-            emptyText="Keine Verpackungstypen für dieses Unternehmen gefunden."
-            createLabel="Neue Verpackung anlegen"
+            searchPlaceholder={tx('Verpackung suchen...')}
+            emptyText={tx('Keine Verpackungstypen für dieses Unternehmen gefunden.')}
+            createLabel={tx('Neue Verpackung anlegen')}
             onCreateNew={() => setVerpackungDialogOpen(true)}
             createDialog={
               <VerpackungstypenDialog
@@ -384,7 +385,7 @@ export default function VerpackungErfassenPage() {
 
           <div className="pt-2">
             <Button variant="outline" size="sm" onClick={() => setCurrentStep(1)}>
-              Zurück zu Schritt 1
+              {tx('Zurück zu Schritt 1')}
             </Button>
           </div>
         </div>
@@ -404,7 +405,7 @@ export default function VerpackungErfassenPage() {
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-sm truncate">{selectedVerpackung.fields.verpackungsname ?? '—'}</h3>
                     {selectedVerpackung.fields.verpackungs_id && (
-                      <p className="text-xs text-muted-foreground">ID: {selectedVerpackung.fields.verpackungs_id}</p>
+                      <p className="text-xs text-muted-foreground">{tx('ID:')} {selectedVerpackung.fields.verpackungs_id}</p>
                     )}
                     <div className="flex flex-wrap gap-2 mt-2">
                       {selectedVerpackung.fields.material_hauptkategorie && (
@@ -419,7 +420,7 @@ export default function VerpackungErfassenPage() {
                       )}
                       {selectedVerpackung.fields.laenge_mm && selectedVerpackung.fields.breite_mm && selectedVerpackung.fields.hoehe_mm && (
                         <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">
-                          {selectedVerpackung.fields.laenge_mm} × {selectedVerpackung.fields.breite_mm} × {selectedVerpackung.fields.hoehe_mm} mm
+                          {selectedVerpackung.fields.laenge_mm} × {selectedVerpackung.fields.breite_mm} × {selectedVerpackung.fields.hoehe_mm} {tx('mm')}
                         </span>
                       )}
                       {selectedVerpackung.fields.gesamtgewicht_g && (
@@ -430,7 +431,7 @@ export default function VerpackungErfassenPage() {
                     </div>
                   </div>
                   <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => setCurrentStep(2)}>
-                    Ändern
+                    {tx('Ändern')}
                   </Button>
                 </div>
               </CardContent>
@@ -444,10 +445,10 @@ export default function VerpackungErfassenPage() {
                 <div className="flex items-center gap-3 mb-3">
                   {getKonformitaetsIcon(currentRegelstatus.fields.konformitaetsstatus?.key)}
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-semibold">Aktuelle Bewertung</h4>
+                    <h4 className="text-sm font-semibold">{tx('Aktuelle Bewertung')}</h4>
                     {currentRegelstatus.fields.bewertungsdatum && (
                       <p className="text-xs text-muted-foreground">
-                        Bewertet am {formatDate(currentRegelstatus.fields.bewertungsdatum)}
+                        {tx('Bewertet am')} {formatDate(currentRegelstatus.fields.bewertungsdatum)}
                       </p>
                     )}
                   </div>
@@ -459,7 +460,7 @@ export default function VerpackungErfassenPage() {
                 </div>
                 {currentRegelstatus.fields.problemfelder && Array.isArray(currentRegelstatus.fields.problemfelder) && currentRegelstatus.fields.problemfelder.length > 0 && (
                   <div className="mb-3">
-                    <p className="text-xs text-muted-foreground mb-1 font-medium">Problemfelder:</p>
+                    <p className="text-xs text-muted-foreground mb-1 font-medium">{tx('Problemfelder:')}</p>
                     <div className="flex flex-wrap gap-1">
                       {(currentRegelstatus.fields.problemfelder as Array<{ key: string; label: string }>).map((p, i) => (
                         <span key={i} className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-full">
@@ -479,7 +480,7 @@ export default function VerpackungErfassenPage() {
                   onClick={() => setRegelstatusDialogOpen(true)}
                 >
                   <IconRefresh size={14} />
-                  Bewertung aktualisieren
+                  {tx('Bewertung aktualisieren')}
                 </Button>
               </CardContent>
             </Card>
@@ -489,16 +490,16 @@ export default function VerpackungErfassenPage() {
                 <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3">
                   <IconShieldCheck size={22} className="text-muted-foreground" />
                 </div>
-                <h4 className="text-sm font-semibold mb-1">Noch keine Bewertung vorhanden</h4>
+                <h4 className="text-sm font-semibold mb-1">{tx('Noch keine Bewertung vorhanden')}</h4>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Bewerte jetzt die PPWR-Konformität dieser Verpackung.
+                  {tx('Bewerte jetzt die PPWR-Konformität dieser Verpackung.')}
                 </p>
                 <Button
                   onClick={() => setRegelstatusDialogOpen(true)}
                   className="gap-1.5"
                 >
                   <IconShieldCheck size={16} />
-                  Konformität bewerten
+                  {tx('Konformität bewerten')}
                 </Button>
               </CardContent>
             </Card>
@@ -508,7 +509,7 @@ export default function VerpackungErfassenPage() {
           {bewertungDone && currentRegelstatus && (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-green-50 border border-green-200">
               <IconCheck size={16} className="text-green-600 shrink-0" />
-              <p className="text-sm text-green-700 font-medium">Bewertung erfolgreich gespeichert.</p>
+              <p className="text-sm text-green-700 font-medium">{tx('Bewertung erfolgreich gespeichert.')}</p>
             </div>
           )}
 
@@ -530,14 +531,14 @@ export default function VerpackungErfassenPage() {
 
           <div className="flex flex-col sm:flex-row gap-2 pt-2">
             <Button variant="outline" onClick={() => setCurrentStep(2)}>
-              Zurück
+              {tx('Zurück')}
             </Button>
             <Button
               onClick={() => setCurrentStep(4)}
               disabled={!currentRegelstatus && !bewertungDone}
               className="gap-1.5"
             >
-              Weiter zu Nachweisen
+              {tx('Weiter zu Nachweisen')}
               <IconArrowRight size={16} />
             </Button>
           </div>
@@ -553,9 +554,9 @@ export default function VerpackungErfassenPage() {
                 <IconFileText size={16} className="text-primary" />
               </div>
               <div>
-                <h2 className="text-base font-semibold">Nachweise hinzufügen</h2>
+                <h2 className="text-base font-semibold">{tx('Nachweise hinzufügen')}</h2>
                 <p className="text-xs text-muted-foreground">
-                  {filteredNachweise.length} {filteredNachweise.length === 1 ? 'Nachweis' : 'Nachweise'} erfasst (optional)
+                  {filteredNachweise.length} {filteredNachweise.length === 1 ? tx('Nachweis') : tx('Nachweise')} {tx('erfasst (optional)')}
                 </p>
               </div>
             </div>
@@ -565,7 +566,7 @@ export default function VerpackungErfassenPage() {
               onClick={() => setNachweiseDialogOpen(true)}
             >
               <IconPlus size={14} />
-              Nachweis hinzufügen
+              {tx('Nachweis hinzufügen')}
             </Button>
           </div>
 
@@ -576,13 +577,13 @@ export default function VerpackungErfassenPage() {
                 <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3">
                   <IconFileText size={22} className="text-muted-foreground" />
                 </div>
-                <h4 className="text-sm font-semibold mb-1">Noch keine Nachweise erfasst</h4>
+                <h4 className="text-sm font-semibold mb-1">{tx('Noch keine Nachweise erfasst')}</h4>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Nachweise sind optional, aber empfehlenswert für die Compliance-Dokumentation.
+                  {tx('Nachweise sind optional, aber empfehlenswert für die Compliance-Dokumentation.')}
                 </p>
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setNachweiseDialogOpen(true)}>
                   <IconPlus size={14} />
-                  Ersten Nachweis hinzufügen
+                  {tx('Ersten Nachweis hinzufügen')}
                 </Button>
               </CardContent>
             </Card>
@@ -604,24 +605,24 @@ export default function VerpackungErfassenPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium truncate">
-                          {n.fields.dokumentart?.label ?? 'Dokument'}
+                          {n.fields.dokumentart?.label ?? tx('Dokument')}
                         </span>
                         {expired && (
-                          <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full shrink-0">Abgelaufen</span>
+                          <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full shrink-0">{tx('Abgelaufen')}</span>
                         )}
                         {expiringSoon && (
                           <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full shrink-0">
                             <IconAlertTriangle size={10} className="inline mr-0.5" />
-                            Läuft bald ab
+                            {tx('Läuft bald ab')}
                           </span>
                         )}
                       </div>
                       {n.fields.aussteller && (
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">Aussteller: {n.fields.aussteller}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{tx('Aussteller:')} {n.fields.aussteller}</p>
                       )}
                       {n.fields.gueltig_bis && (
                         <p className={`text-xs mt-0.5 ${expired ? 'text-red-600' : expiringSoon ? 'text-amber-600' : 'text-muted-foreground'}`}>
-                          Gültig bis: {formatDate(n.fields.gueltig_bis)}
+                          {tx('Gültig bis:')} {formatDate(n.fields.gueltig_bis)}
                         </p>
                       )}
                     </div>
@@ -646,14 +647,14 @@ export default function VerpackungErfassenPage() {
 
           <div className="flex flex-col sm:flex-row gap-2 pt-2">
             <Button variant="outline" onClick={() => setCurrentStep(3)}>
-              Zurück
+              {tx('Zurück')}
             </Button>
             <Button variant="outline" onClick={() => setCurrentStep(5)} className="gap-1.5">
-              Weiter ohne Nachweise
+              {tx('Weiter ohne Nachweise')}
               <IconArrowRight size={16} />
             </Button>
             <Button onClick={() => setCurrentStep(5)} className="gap-1.5">
-              Weiter
+              {tx('Weiter')}
               <IconArrowRight size={16} />
             </Button>
           </div>
@@ -668,8 +669,8 @@ export default function VerpackungErfassenPage() {
               <IconCheck size={20} className="text-green-600" />
             </div>
             <div>
-              <h2 className="text-base font-semibold">Erfassung abgeschlossen</h2>
-              <p className="text-xs text-muted-foreground">Hier ist eine Zusammenfassung der erfassten Verpackung.</p>
+              <h2 className="text-base font-semibold">{tx('Erfassung abgeschlossen')}</h2>
+              <p className="text-xs text-muted-foreground">{tx('Hier ist eine Zusammenfassung der erfassten Verpackung.')}</p>
             </div>
           </div>
 
@@ -679,7 +680,7 @@ export default function VerpackungErfassenPage() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <IconBuilding size={15} className="text-muted-foreground shrink-0" />
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Unternehmen</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{tx('Unternehmen')}</span>
                 </div>
                 <p className="font-semibold text-sm">{selectedUnternehmen.fields.firmenname ?? '—'}</p>
                 {(selectedUnternehmen.fields.strasse || selectedUnternehmen.fields.ort) && (
@@ -702,11 +703,11 @@ export default function VerpackungErfassenPage() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <IconPackage size={15} className="text-muted-foreground shrink-0" />
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Verpackungstyp</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{tx('Verpackungstyp')}</span>
                 </div>
                 <p className="font-semibold text-sm">{selectedVerpackung.fields.verpackungsname ?? '—'}</p>
                 {selectedVerpackung.fields.verpackungs_id && (
-                  <p className="text-xs text-muted-foreground mt-0.5">ID: {selectedVerpackung.fields.verpackungs_id}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{tx('ID:')} {selectedVerpackung.fields.verpackungs_id}</p>
                 )}
                 <div className="flex flex-wrap gap-2 mt-2">
                   {selectedVerpackung.fields.material_hauptkategorie && (
@@ -721,7 +722,7 @@ export default function VerpackungErfassenPage() {
                   )}
                   {selectedVerpackung.fields.laenge_mm && selectedVerpackung.fields.breite_mm && selectedVerpackung.fields.hoehe_mm && (
                     <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">
-                      {selectedVerpackung.fields.laenge_mm} × {selectedVerpackung.fields.breite_mm} × {selectedVerpackung.fields.hoehe_mm} mm
+                      {selectedVerpackung.fields.laenge_mm} × {selectedVerpackung.fields.breite_mm} × {selectedVerpackung.fields.hoehe_mm} {tx('mm')}
                     </span>
                   )}
                   {selectedVerpackung.fields.gesamtgewicht_g && (
@@ -740,7 +741,7 @@ export default function VerpackungErfassenPage() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <IconShieldCheck size={15} className="text-muted-foreground shrink-0" />
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Compliance-Ergebnis</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{tx('Compliance-Ergebnis')}</span>
                 </div>
                 <div className="flex items-center gap-3 mb-3">
                   {getKonformitaetsIcon(currentRegelstatus.fields.konformitaetsstatus?.key)}
@@ -752,7 +753,7 @@ export default function VerpackungErfassenPage() {
                 </div>
                 {currentRegelstatus.fields.problemfelder && Array.isArray(currentRegelstatus.fields.problemfelder) && currentRegelstatus.fields.problemfelder.length > 0 && (
                   <div className="mb-3">
-                    <p className="text-xs font-medium text-muted-foreground mb-1">Problemfelder:</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">{tx('Problemfelder:')}</p>
                     <ul className="space-y-1">
                       {(currentRegelstatus.fields.problemfelder as Array<{ key: string; label: string }>).map((p, i) => (
                         <li key={i} className="flex items-center gap-1.5 text-xs text-destructive">
@@ -770,9 +771,9 @@ export default function VerpackungErfassenPage() {
                 )}
                 {currentRegelstatus.fields.bewertungsdatum && (
                   <p className="text-xs text-muted-foreground mt-2">
-                    Bewertet am {formatDate(currentRegelstatus.fields.bewertungsdatum)}
+                    {tx('Bewertet am')} {formatDate(currentRegelstatus.fields.bewertungsdatum)}
                     {currentRegelstatus.fields.bewerter_vorname && (
-                      <> von {currentRegelstatus.fields.bewerter_vorname} {currentRegelstatus.fields.bewerter_nachname ?? ''}</>
+                      <> {tx('von')} {currentRegelstatus.fields.bewerter_vorname} {currentRegelstatus.fields.bewerter_nachname ?? ''}</>
                     )}
                   </p>
                 )}
@@ -785,20 +786,20 @@ export default function VerpackungErfassenPage() {
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <IconFileText size={15} className="text-muted-foreground shrink-0" />
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Nachweise</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{tx('Nachweise')}</span>
                 <span className="ml-auto text-xs font-semibold text-foreground">
-                  {filteredNachweise.length} {filteredNachweise.length === 1 ? 'Nachweis' : 'Nachweise'}
+                  {filteredNachweise.length} {filteredNachweise.length === 1 ? tx('Nachweis') : tx('Nachweise')}
                 </span>
               </div>
               {filteredNachweise.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Keine Nachweise erfasst.</p>
+                <p className="text-xs text-muted-foreground">{tx('Keine Nachweise erfasst.')}</p>
               ) : (
                 <ul className="space-y-1">
                   {filteredNachweise.map(n => (
                     <li key={n.record_id} className="flex items-center gap-2 text-xs">
                       <IconCheck size={12} className="text-green-600 shrink-0" />
                       <span className="truncate">
-                        {n.fields.dokumentart?.label ?? 'Dokument'}
+                        {n.fields.dokumentart?.label ?? tx('Dokument')}
                         {n.fields.aussteller && ` – ${n.fields.aussteller}`}
                         {n.fields.gueltig_bis && ` (bis ${formatDate(n.fields.gueltig_bis)})`}
                       </span>
@@ -813,17 +814,17 @@ export default function VerpackungErfassenPage() {
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <Button onClick={handleReset} variant="outline" className="gap-1.5">
               <IconPlus size={16} />
-              Neue Verpackung bewerten
+              {tx('Neue Verpackung bewerten')}
             </Button>
             <a href="#/" className="inline-flex">
               <Button variant="outline" className="w-full gap-1.5">
-                Zurück zur Übersicht
+                {tx('Zurück zur Übersicht')}
               </Button>
             </a>
             <a href="#/verpackungstypen" className="inline-flex">
               <Button className="w-full gap-1.5">
                 <IconPackage size={16} />
-                Zur Verpackungsliste
+                {tx('Zur Verpackungsliste')}
               </Button>
             </a>
           </div>

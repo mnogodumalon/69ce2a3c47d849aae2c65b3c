@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { lookupKey, lookupKeys } from '@/lib/formatters';
+import { tx } from '@/i18n';
 
 // Empty PROXY_BASE → relative URLs (dashboard and form-proxy share the domain).
 const PROXY_BASE = '';
@@ -27,7 +28,7 @@ async function submitPublicForm(fields: Record<string, unknown>, captchaToken: s
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(err || 'Submission failed');
+    throw new Error(err || tx('Submission failed'));
   }
   return res.json();
 }
@@ -86,7 +87,7 @@ export default function PublicFormVerpackungstypen() {
     e.preventDefault();
     const token = readCaptchaToken();
     if (!token) {
-      setError('Bitte warte auf die Spam-Prüfung und versuche es erneut.');
+      setError(tx('Bitte warte auf die Spam-Prüfung und versuche es erneut.'));
       return;
     }
     setSubmitting(true);
@@ -95,7 +96,7 @@ export default function PublicFormVerpackungstypen() {
       await submitPublicForm(cleanFields(fields), token);
       setSubmitted(true);
     } catch (err: any) {
-      setError(err.message || 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      setError(err.message || tx('Etwas ist schiefgelaufen. Bitte versuche es erneut.'));
     } finally {
       setSubmitting(false);
     }
@@ -110,10 +111,10 @@ export default function PublicFormVerpackungstypen() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold">Vielen Dank!</h2>
-          <p className="text-muted-foreground">Deine Eingabe wurde erfolgreich übermittelt.</p>
+          <h2 className="text-xl font-bold">{tx('Vielen Dank!')}</h2>
+          <p className="text-muted-foreground">{tx('Deine Eingabe wurde erfolgreich übermittelt.')}</p>
           <Button variant="outline" className="mt-4" onClick={() => { setSubmitted(false); setFields({}); }}>
-            Weitere Eingabe
+            {tx('Weitere Eingabe')}
           </Button>
         </div>
       </div>
@@ -124,12 +125,12 @@ export default function PublicFormVerpackungstypen() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Verpackungstypen — Formular</h1>
+          <h1 className="text-2xl font-bold text-foreground">{tx('Verpackungstypen — Formular')}</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5 bg-card rounded-xl border border-border p-6 shadow-md">
           <div className="space-y-2">
-            <Label htmlFor="verpackungs_id">Verpackungs-ID</Label>
+            <Label htmlFor="verpackungs_id">{tx('Verpackungs-ID')}</Label>
             <Input
               id="verpackungs_id"
               placeholder=""
@@ -138,7 +139,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="verpackungsname">Name der Verpackung</Label>
+            <Label htmlFor="verpackungsname">{tx('Name der Verpackung')}</Label>
             <Input
               id="verpackungsname"
               placeholder=""
@@ -147,7 +148,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="beschreibung">Beschreibung</Label>
+            <Label htmlFor="beschreibung">{tx('Beschreibung')}</Label>
             <Textarea
               id="beschreibung"
               placeholder=""
@@ -157,7 +158,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="produktkategorie">Produktkategorie</Label>
+            <Label htmlFor="produktkategorie">{tx('Produktkategorie')}</Label>
             <Input
               id="produktkategorie"
               placeholder=""
@@ -166,7 +167,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="verwendungszweck">Verwendungszweck</Label>
+            <Label htmlFor="verwendungszweck">{tx('Verwendungszweck')}</Label>
             <div role="radiogroup" className="flex flex-wrap gap-1.5">
               <button
                 type="button"
@@ -179,7 +180,7 @@ export default function PublicFormVerpackungstypen() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Verkaufsverpackung
+                {tx('Verkaufsverpackung')}
               </button>
               <button
                 type="button"
@@ -192,7 +193,7 @@ export default function PublicFormVerpackungstypen() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Versandverpackung
+                {tx('Versandverpackung')}
               </button>
               <button
                 type="button"
@@ -205,7 +206,7 @@ export default function PublicFormVerpackungstypen() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Transportverpackung
+                {tx('Transportverpackung')}
               </button>
               <button
                 type="button"
@@ -218,12 +219,12 @@ export default function PublicFormVerpackungstypen() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Serviceverpackung
+                {tx('Serviceverpackung')}
               </button>
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="material_hauptkategorie">Material-Hauptkategorie</Label>
+            <Label htmlFor="material_hauptkategorie">{tx('Material-Hauptkategorie')}</Label>
             <Select
               value={lookupKey(fields.material_hauptkategorie) ?? ''}
               onValueChange={v => setFields(f => ({ ...f, material_hauptkategorie: v === 'none' ? undefined : v as any }))}
@@ -231,17 +232,17 @@ export default function PublicFormVerpackungstypen() {
               <SelectTrigger id="material_hauptkategorie"><SelectValue placeholder="" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">—</SelectItem>
-                <SelectItem value="kunststoff">Kunststoff</SelectItem>
-                <SelectItem value="papier_pappe">Papier/Pappe</SelectItem>
-                <SelectItem value="glas">Glas</SelectItem>
-                <SelectItem value="metall">Metall</SelectItem>
-                <SelectItem value="verbund">Verbund</SelectItem>
-                <SelectItem value="sonstiges">Sonstiges</SelectItem>
+                <SelectItem value="kunststoff">{tx('Kunststoff')}</SelectItem>
+                <SelectItem value="papier_pappe">{tx('Papier/Pappe')}</SelectItem>
+                <SelectItem value="glas">{tx('Glas')}</SelectItem>
+                <SelectItem value="metall">{tx('Metall')}</SelectItem>
+                <SelectItem value="verbund">{tx('Verbund')}</SelectItem>
+                <SelectItem value="sonstiges">{tx('Sonstiges')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="materialzusammensetzung">Detaillierte Materialzusammensetzung</Label>
+            <Label htmlFor="materialzusammensetzung">{tx('Detaillierte Materialzusammensetzung')}</Label>
             <Textarea
               id="materialzusammensetzung"
               placeholder=""
@@ -251,7 +252,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="material_einzelmaterialien">Einzelmaterialien (Bezeichnung)</Label>
+            <Label htmlFor="material_einzelmaterialien">{tx('Einzelmaterialien (Bezeichnung)')}</Label>
             <Input
               id="material_einzelmaterialien"
               placeholder=""
@@ -260,7 +261,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="material_prozentsaetze">Materialanteile in %</Label>
+            <Label htmlFor="material_prozentsaetze">{tx('Materialanteile in %')}</Label>
             <Input
               id="material_prozentsaetze"
               placeholder=""
@@ -269,7 +270,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="material_gewichte_g">Materialgewichte in Gramm</Label>
+            <Label htmlFor="material_gewichte_g">{tx('Materialgewichte in Gramm')}</Label>
             <Input
               id="material_gewichte_g"
               placeholder=""
@@ -278,7 +279,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="laenge_mm">Länge (mm)</Label>
+            <Label htmlFor="laenge_mm">{tx('Länge (mm)')}</Label>
             <Input
               id="laenge_mm"
               type="number"
@@ -290,7 +291,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="breite_mm">Breite (mm)</Label>
+            <Label htmlFor="breite_mm">{tx('Breite (mm)')}</Label>
             <Input
               id="breite_mm"
               type="number"
@@ -302,7 +303,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="hoehe_mm">Höhe (mm)</Label>
+            <Label htmlFor="hoehe_mm">{tx('Höhe (mm)')}</Label>
             <Input
               id="hoehe_mm"
               type="number"
@@ -314,7 +315,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="wandstaerke_mm">Wandstärke (mm)</Label>
+            <Label htmlFor="wandstaerke_mm">{tx('Wandstärke (mm)')}</Label>
             <Input
               id="wandstaerke_mm"
               type="number"
@@ -326,7 +327,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="volumen_ml">Volumen (ml)</Label>
+            <Label htmlFor="volumen_ml">{tx('Volumen (ml)')}</Label>
             <Input
               id="volumen_ml"
               type="number"
@@ -338,7 +339,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="gesamtgewicht_g">Gesamtgewicht (g)</Label>
+            <Label htmlFor="gesamtgewicht_g">{tx('Gesamtgewicht (g)')}</Label>
             <Input
               id="gesamtgewicht_g"
               type="number"
@@ -350,7 +351,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rezyklat_postconsumer_prozent">Post-Consumer-Rezyklatanteil (%)</Label>
+            <Label htmlFor="rezyklat_postconsumer_prozent">{tx('Post-Consumer-Rezyklatanteil (%)')}</Label>
             <Input
               id="rezyklat_postconsumer_prozent"
               type="number"
@@ -362,7 +363,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rezyklat_postconsumer_kg_jahr">Post-Consumer-Rezyklat (kg/Jahr)</Label>
+            <Label htmlFor="rezyklat_postconsumer_kg_jahr">{tx('Post-Consumer-Rezyklat (kg/Jahr)')}</Label>
             <Input
               id="rezyklat_postconsumer_kg_jahr"
               type="number"
@@ -374,7 +375,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rezyklat_postindustrial_prozent">Post-Industrial-Rezyklatanteil (%)</Label>
+            <Label htmlFor="rezyklat_postindustrial_prozent">{tx('Post-Industrial-Rezyklatanteil (%)')}</Label>
             <Input
               id="rezyklat_postindustrial_prozent"
               type="number"
@@ -386,7 +387,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rezyklat_postindustrial_kg_jahr">Post-Industrial-Rezyklat (kg/Jahr)</Label>
+            <Label htmlFor="rezyklat_postindustrial_kg_jahr">{tx('Post-Industrial-Rezyklat (kg/Jahr)')}</Label>
             <Input
               id="rezyklat_postindustrial_kg_jahr"
               type="number"
@@ -398,7 +399,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="recyclingfaehigkeit_kategorie">Recyclingfähigkeit – Kategorie</Label>
+            <Label htmlFor="recyclingfaehigkeit_kategorie">{tx('Recyclingfähigkeit – Kategorie')}</Label>
             <div role="radiogroup" className="flex flex-wrap gap-1.5">
               <button
                 type="button"
@@ -411,7 +412,7 @@ export default function PublicFormVerpackungstypen() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Gut recyclingfähig
+                {tx('Gut recyclingfähig')}
               </button>
               <button
                 type="button"
@@ -424,7 +425,7 @@ export default function PublicFormVerpackungstypen() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Eingeschränkt recyclingfähig
+                {tx('Eingeschränkt recyclingfähig')}
               </button>
               <button
                 type="button"
@@ -437,7 +438,7 @@ export default function PublicFormVerpackungstypen() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Nicht recyclingfähig
+                {tx('Nicht recyclingfähig')}
               </button>
               <button
                 type="button"
@@ -450,12 +451,12 @@ export default function PublicFormVerpackungstypen() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Nicht bewertet
+                {tx('Nicht bewertet')}
               </button>
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="recyclingfaehigkeit_score">Recyclingfähigkeit – Score (0–100)</Label>
+            <Label htmlFor="recyclingfaehigkeit_score">{tx('Recyclingfähigkeit – Score (0–100)')}</Label>
             <Input
               id="recyclingfaehigkeit_score"
               type="number"
@@ -467,7 +468,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="recyclingfaehigkeit_referenz">Referenz Prüfstandard / Gutachten</Label>
+            <Label htmlFor="recyclingfaehigkeit_referenz">{tx('Referenz Prüfstandard / Gutachten')}</Label>
             <Input
               id="recyclingfaehigkeit_referenz"
               placeholder=""
@@ -476,18 +477,18 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="mehrwegfaehig">Mehrwegfähig</Label>
+            <Label htmlFor="mehrwegfaehig">{tx('Mehrwegfähig')}</Label>
             <div className="flex items-center gap-2 pt-1">
               <Checkbox
                 id="mehrwegfaehig"
                 checked={!!fields.mehrwegfaehig}
                 onCheckedChange={(v) => setFields(f => ({ ...f, mehrwegfaehig: !!v }))}
               />
-              <Label htmlFor="mehrwegfaehig" className="font-normal">Mehrwegfähig</Label>
+              <Label htmlFor="mehrwegfaehig" className="font-normal">{tx('Mehrwegfähig')}</Label>
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="erwartete_umlaeufe">Erwartete Umläufe</Label>
+            <Label htmlFor="erwartete_umlaeufe">{tx('Erwartete Umläufe')}</Label>
             <Input
               id="erwartete_umlaeufe"
               type="number"
@@ -499,7 +500,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ruecknahmesystem">Beschreibung Rücknahmesystem</Label>
+            <Label htmlFor="ruecknahmesystem">{tx('Beschreibung Rücknahmesystem')}</Label>
             <Textarea
               id="ruecknahmesystem"
               placeholder=""
@@ -509,7 +510,7 @@ export default function PublicFormVerpackungstypen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ppwr_quoten_zuordnung">Zuordnung zu PPWR-Quoten</Label>
+            <Label htmlFor="ppwr_quoten_zuordnung">{tx('Zuordnung zu PPWR-Quoten')}</Label>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -523,7 +524,7 @@ export default function PublicFormVerpackungstypen() {
                     });
                   }}
                 />
-                <Label htmlFor="ppwr_quoten_zuordnung_rezyklatquote" className="font-normal">Rezyklatquote</Label>
+                <Label htmlFor="ppwr_quoten_zuordnung_rezyklatquote" className="font-normal">{tx('Rezyklatquote')}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -537,7 +538,7 @@ export default function PublicFormVerpackungstypen() {
                     });
                   }}
                 />
-                <Label htmlFor="ppwr_quoten_zuordnung_mehrwegquote" className="font-normal">Mehrwegquote</Label>
+                <Label htmlFor="ppwr_quoten_zuordnung_mehrwegquote" className="font-normal">{tx('Mehrwegquote')}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -551,23 +552,23 @@ export default function PublicFormVerpackungstypen() {
                     });
                   }}
                 />
-                <Label htmlFor="ppwr_quoten_zuordnung_recyclingfaehigkeitsquote" className="font-normal">Recyclingfähigkeitsquote</Label>
+                <Label htmlFor="ppwr_quoten_zuordnung_recyclingfaehigkeitsquote" className="font-normal">{tx('Recyclingfähigkeitsquote')}</Label>
               </div>
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="kennzeichnung_vollstaendig">Kennzeichnung vollständig</Label>
+            <Label htmlFor="kennzeichnung_vollstaendig">{tx('Kennzeichnung vollständig')}</Label>
             <div className="flex items-center gap-2 pt-1">
               <Checkbox
                 id="kennzeichnung_vollstaendig"
                 checked={!!fields.kennzeichnung_vollstaendig}
                 onCheckedChange={(v) => setFields(f => ({ ...f, kennzeichnung_vollstaendig: !!v }))}
               />
-              <Label htmlFor="kennzeichnung_vollstaendig" className="font-normal">Kennzeichnung vollständig</Label>
+              <Label htmlFor="kennzeichnung_vollstaendig" className="font-normal">{tx('Kennzeichnung vollständig')}</Label>
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="kennzeichnung_hinweise">Hinweise zur Kennzeichnung</Label>
+            <Label htmlFor="kennzeichnung_hinweise">{tx('Hinweise zur Kennzeichnung')}</Label>
             <Textarea
               id="kennzeichnung_hinweise"
               placeholder=""
@@ -591,12 +592,12 @@ export default function PublicFormVerpackungstypen() {
           )}
 
           <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? 'Wird gesendet...' : 'Absenden'}
+            {submitting ? tx('Wird gesendet...') : tx('Absenden')}
           </Button>
         </form>
 
         <p className="text-xs text-muted-foreground text-center mt-4">
-          Powered by Klar
+          {tx('Powered by Klar')}
         </p>
       </div>
     </div>

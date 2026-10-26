@@ -1,3 +1,17 @@
+/**
+ * UnternehmenDialog — pre-generated create/edit dialog for Unternehmen.
+ *
+ * Props: open, onClose, onSubmit(fields) => Promise<void>, defaultValues?,
+ * recordId? (pass when EDITING — enables the attachments section),
+ * enablePhotoScan?, enablePhotoLocation?.
+ *
+ * defaultValues is SHAPE-TOLERANT and its prop type is the EXPORTED
+ * UnternehmenDialogDefaults — NOT the entity field type: lookup fields accept
+ * the bare KEY string (or LookupValue), applookup fields the bare record id
+ * (or record URL); the dialog normalizes. Type prefill STATE with the export:
+ *  ❌ useState<Partial<Unternehmen['fields']>>({ … })   // LookupValue fields reject string prefills (TS2322)
+ *  ✓ useState<UnternehmenDialogDefaults | undefined>(undefined)
+ */
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { Unternehmen } from '@/types/app';
 import { APP_IDS } from '@/types/app';
@@ -13,16 +27,24 @@ import type { ComputedContext } from '@/config/form-enhancements/types';
 import { applyFieldOrder, flattenFieldOrder, applyDefaults, evalComputed, numberInputProps, clampNumberValue, classifyComputed, extractApplookupRefs, mergeApplookupRefs, resolveApplookupRef } from '@/config/form-enhancements/types';
 import { formEnhancements, computedDeps, computedApplookupRefs } from '@/config/form-enhancements/Unternehmen';
 import { AttachmentsSection } from '@/components/AttachmentsSection';
+import { requiredMessage } from '@/lib/journey/messages';
+import { t, appLabel, fieldLabel, lookupLabel, localeTag, CURRENCY } from '@/i18n';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { IconCamera, IconChevronDown, IconCircleCheck, IconClipboard, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
+import { IconAlertCircle, IconCamera, IconChevronDown, IconCircleCheck, IconClipboard, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
 import { fileToDataUri, extractFromInput, extractPhotoMeta, reverseGeocode } from '@/lib/ai';
+
+/** Widened prefill type for UnternehmenDialog.defaultValues — see file header. */
+export type UnternehmenDialogDefaults = Unternehmen['fields'];
 
 interface UnternehmenDialogProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (fields: Unternehmen['fields']) => Promise<void>;
-  defaultValues?: Unternehmen['fields'];
+  /** SHAPE-TOLERANT: lookup fields accept the bare key (string) or the
+   *  LookupValue object; applookup fields the bare record id or the full
+   *  record URL — the dialog normalizes both. */
+  defaultValues?: UnternehmenDialogDefaults;
   /** Record id when editing — enables the attachments section. Omit on create. */
   recordId?: string;
   enablePhotoScan?: boolean;
@@ -32,17 +54,26 @@ interface UnternehmenDialogProps {
 export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, recordId, enablePhotoScan = true, enablePhotoLocation = true }: UnternehmenDialogProps) {
   const [fields, setFields] = useState<Partial<Unternehmen['fields']>>({});
   const [saving, setSaving] = useState(false);
+  const normalizedDefaults = defaultValues as Record<string, unknown> | undefined;
   // Dirty-tracking: in edit-mode the Speichern button is disabled until the
   // user actually changes something. JSON.stringify is good enough for our
   // fields (plain values + LookupValue objects + string arrays).
   const isDirty = useMemo(() => {
-    if (!defaultValues) return true;  // create-mode: always allow submit
+    if (!normalizedDefaults) return true;  // create-mode: always allow submit
     try {
-      return JSON.stringify(fields) !== JSON.stringify(defaultValues);
+      return JSON.stringify(fields) !== JSON.stringify(normalizedDefaults);
     } catch {
       return true;
     }
-  }, [fields, defaultValues]);
+  }, [fields, normalizedDefaults]);
+  // Fields the plan assigns to a tool (empty without a plan).
+  const SYSTEM_ASSIGNED: string[] = [];
+  const [showErrors, setShowErrors] = useState(false);
+  const REQUIRED_FIELDS = ['firmenname', 'strasse', 'hausnummer', 'plz', 'ort', 'ansprechpartner_vorname', 'ansprechpartner_nachname'] as const;
+  const missingRequired = REQUIRED_FIELDS.filter(k => {
+    const v = (fields as Record<string, unknown>)[k];
+    return v == null || v === '' || (Array.isArray(v) && v.length === 0);
+  });
   const [aiOpen, setAiOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
@@ -92,12 +123,13 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
 
   useEffect(() => {
     if (open) {
-      setFields(applyDefaults((defaultValues ?? {}) as Record<string, unknown>, formEnhancements.defaults) as Partial<Unternehmen['fields']>);
+      setFields(applyDefaults(normalizedDefaults ?? {}, formEnhancements.defaults) as Partial<Unternehmen['fields']>);
       setPreview(null);
       setScanSuccess(false);
       setAiText('');
+      setSubmitError(null);
     }
-  }, [open, defaultValues]);
+  }, [open, normalizedDefaults]);
   useEffect(() => {
     try { localStorage.setItem('ai-use-personal-info', String(usePersonalInfo)); } catch {}
   }, [usePersonalInfo]);
@@ -115,9 +147,20 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     }
   }
 
+  // Submit errors surface IN the dialog (it is modal — a banner in the page
+  // body would be hidden behind it). A consumer onSubmit that THROWS (the
+  // documented "throw to prevent closing" validation pattern) lands here:
+  // the dialog stays open, nothing is saved, the message is visible.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (missingRequired.length > 0) {
+      setShowErrors(true);
+      return;
+    }
     setSaving(true);
+    setSubmitError(null);
     try {
       // Fill empty number slots from computed values; user-typed values always win.
       // CRITICAL: only backend-mapped keys may be backfilled. Virtual computeds
@@ -136,6 +179,8 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
       const clean = cleanFieldsForApi(merged, 'unternehmen');
       await onSubmit(clean as Unternehmen['fields']);
       onClose();
+    } catch (err) {
+      setSubmitError(err instanceof Error && err.message ? err.message : t('submit_error'));
     } finally {
       setSaving(false);
     }
@@ -199,7 +244,7 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
       setScanSuccess(true);
       setTimeout(() => setScanSuccess(false), 3000);
     } catch (err) {
-      console.error('Scan fehlgeschlagen:', err);
+      console.error(`${t('scan_error')}:`, err);
       alert(err instanceof Error ? err.message : String(err));
     } finally {
       setScanning(false);
@@ -234,67 +279,89 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     }
   }, []);
 
-  const DIALOG_INTENT = defaultValues ? 'Unternehmen bearbeiten' : 'Unternehmen hinzufügen';
+  const DIALOG_INTENT = defaultValues
+    ? t('edit_entity', { entity: appLabel('unternehmen') })
+    : t('new_entity', { entity: appLabel('unternehmen') });
 
   const fieldBlocks: Record<string, React.ReactNode> = {
     'firmenname': (
       <div key="firmenname" className="space-y-1.5">
-        <Label htmlFor="firmenname">Firmenname</Label>
+        <Label htmlFor="firmenname">{fieldLabel('unternehmen', 'firmenname')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="firmenname"
           placeholder=""
           value={fields.firmenname ?? ''}
           onChange={e => setFields(f => ({ ...f, firmenname: e.target.value }))}
+          required
         />
+        {showErrors && !fields.firmenname && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('unternehmen', 'firmenname')}</p>
+        )}
       </div>
     ),
     'strasse': (
       <div key="strasse" className="space-y-1.5">
-        <Label htmlFor="strasse">Straße</Label>
+        <Label htmlFor="strasse">{fieldLabel('unternehmen', 'strasse')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="strasse"
           placeholder=""
           value={fields.strasse ?? ''}
           onChange={e => setFields(f => ({ ...f, strasse: e.target.value }))}
+          required
         />
+        {showErrors && !fields.strasse && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('unternehmen', 'strasse')}</p>
+        )}
       </div>
     ),
     'hausnummer': (
       <div key="hausnummer" className="space-y-1.5">
-        <Label htmlFor="hausnummer">Hausnummer</Label>
+        <Label htmlFor="hausnummer">{fieldLabel('unternehmen', 'hausnummer')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="hausnummer"
           placeholder=""
           value={fields.hausnummer ?? ''}
           onChange={e => setFields(f => ({ ...f, hausnummer: e.target.value }))}
+          required
         />
+        {showErrors && !fields.hausnummer && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('unternehmen', 'hausnummer')}</p>
+        )}
       </div>
     ),
     'plz': (
       <div key="plz" className="space-y-1.5">
-        <Label htmlFor="plz">Postleitzahl</Label>
+        <Label htmlFor="plz">{fieldLabel('unternehmen', 'plz')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="plz"
           placeholder=""
           value={fields.plz ?? ''}
           onChange={e => setFields(f => ({ ...f, plz: e.target.value }))}
+          required
         />
+        {showErrors && !fields.plz && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('unternehmen', 'plz')}</p>
+        )}
       </div>
     ),
     'ort': (
       <div key="ort" className="space-y-1.5">
-        <Label htmlFor="ort">Ort</Label>
+        <Label htmlFor="ort">{fieldLabel('unternehmen', 'ort')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="ort"
           placeholder=""
           value={fields.ort ?? ''}
           onChange={e => setFields(f => ({ ...f, ort: e.target.value }))}
+          required
         />
+        {showErrors && !fields.ort && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('unternehmen', 'ort')}</p>
+        )}
       </div>
     ),
     'laender': (
       <div key="laender" className="space-y-1.5">
-        <Label htmlFor="laender">Tätigkeitsländer</Label>
+        <Label htmlFor="laender">{fieldLabel('unternehmen', 'laender')}</Label>
         <Input
           id="laender"
           placeholder=""
@@ -305,32 +372,41 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     ),
     'ansprechpartner_vorname': (
       <div key="ansprechpartner_vorname" className="space-y-1.5">
-        <Label htmlFor="ansprechpartner_vorname">Vorname Ansprechpartner</Label>
+        <Label htmlFor="ansprechpartner_vorname">{fieldLabel('unternehmen', 'ansprechpartner_vorname')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="ansprechpartner_vorname"
           placeholder=""
           value={fields.ansprechpartner_vorname ?? ''}
           onChange={e => setFields(f => ({ ...f, ansprechpartner_vorname: e.target.value }))}
+          required
         />
+        {showErrors && !fields.ansprechpartner_vorname && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('unternehmen', 'ansprechpartner_vorname')}</p>
+        )}
       </div>
     ),
     'ansprechpartner_nachname': (
       <div key="ansprechpartner_nachname" className="space-y-1.5">
-        <Label htmlFor="ansprechpartner_nachname">Nachname Ansprechpartner</Label>
+        <Label htmlFor="ansprechpartner_nachname">{fieldLabel('unternehmen', 'ansprechpartner_nachname')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="ansprechpartner_nachname"
           placeholder=""
           value={fields.ansprechpartner_nachname ?? ''}
           onChange={e => setFields(f => ({ ...f, ansprechpartner_nachname: e.target.value }))}
+          required
         />
+        {showErrors && !fields.ansprechpartner_nachname && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('unternehmen', 'ansprechpartner_nachname')}</p>
+        )}
       </div>
     ),
     'ansprechpartner_email': (
       <div key="ansprechpartner_email" className="space-y-1.5">
-        <Label htmlFor="ansprechpartner_email">E-Mail Ansprechpartner</Label>
+        <Label htmlFor="ansprechpartner_email">{fieldLabel('unternehmen', 'ansprechpartner_email')}</Label>
         <Input
           id="ansprechpartner_email"
           type="email"
+          inputMode="email"
           placeholder=""
           value={fields.ansprechpartner_email ?? ''}
           onChange={e => setFields(f => ({ ...f, ansprechpartner_email: e.target.value }))}
@@ -339,9 +415,12 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     ),
     'ansprechpartner_telefon': (
       <div key="ansprechpartner_telefon" className="space-y-1.5">
-        <Label htmlFor="ansprechpartner_telefon">Telefon Ansprechpartner</Label>
+        <Label htmlFor="ansprechpartner_telefon">{fieldLabel('unternehmen', 'ansprechpartner_telefon')}</Label>
         <Input
           id="ansprechpartner_telefon"
+          type="tel"
+          inputMode="tel"
+          placeholder=""
           value={fields.ansprechpartner_telefon ?? ''}
           onChange={e => setFields(f => ({ ...f, ansprechpartner_telefon: e.target.value }))}
         />
@@ -349,7 +428,7 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     ),
     'steuernummer': (
       <div key="steuernummer" className="space-y-1.5">
-        <Label htmlFor="steuernummer">Steuernummer / USt-IdNr.</Label>
+        <Label htmlFor="steuernummer">{fieldLabel('unternehmen', 'steuernummer')}</Label>
         <Input
           id="steuernummer"
           placeholder=""
@@ -360,7 +439,7 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     ),
     'epr_registrierungsnummern': (
       <div key="epr_registrierungsnummern" className="space-y-1.5">
-        <Label htmlFor="epr_registrierungsnummern">EPR-Registrierungsnummern (je Land)</Label>
+        <Label htmlFor="epr_registrierungsnummern">{fieldLabel('unternehmen', 'epr_registrierungsnummern')}</Label>
         <Textarea
           id="epr_registrierungsnummern"
           placeholder=""
@@ -372,7 +451,7 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     ),
     'verantwortlich_vorname': (
       <div key="verantwortlich_vorname" className="space-y-1.5">
-        <Label htmlFor="verantwortlich_vorname">Vorname verantwortliche Person</Label>
+        <Label htmlFor="verantwortlich_vorname">{fieldLabel('unternehmen', 'verantwortlich_vorname')}</Label>
         <Input
           id="verantwortlich_vorname"
           placeholder=""
@@ -383,7 +462,7 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     ),
     'verantwortlich_nachname': (
       <div key="verantwortlich_nachname" className="space-y-1.5">
-        <Label htmlFor="verantwortlich_nachname">Nachname verantwortliche Person</Label>
+        <Label htmlFor="verantwortlich_nachname">{fieldLabel('unternehmen', 'verantwortlich_nachname')}</Label>
         <Input
           id="verantwortlich_nachname"
           placeholder=""
@@ -394,7 +473,7 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     ),
     'verantwortlich_funktion': (
       <div key="verantwortlich_funktion" className="space-y-1.5">
-        <Label htmlFor="verantwortlich_funktion">Funktion / Position</Label>
+        <Label htmlFor="verantwortlich_funktion">{fieldLabel('unternehmen', 'verantwortlich_funktion')}</Label>
         <Input
           id="verantwortlich_funktion"
           placeholder=""
@@ -405,10 +484,11 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     ),
     'verantwortlich_email': (
       <div key="verantwortlich_email" className="space-y-1.5">
-        <Label htmlFor="verantwortlich_email">E-Mail verantwortliche Person</Label>
+        <Label htmlFor="verantwortlich_email">{fieldLabel('unternehmen', 'verantwortlich_email')}</Label>
         <Input
           id="verantwortlich_email"
           type="email"
+          inputMode="email"
           placeholder=""
           value={fields.verantwortlich_email ?? ''}
           onChange={e => setFields(f => ({ ...f, verantwortlich_email: e.target.value }))}
@@ -484,15 +564,15 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
     // Backend-Feld mit €-Label ODER virtueller Computed-Key, dessen Name nach Geld aussieht.
     const looksLikeCurrency = CURRENCY_KEYS.has(k) || /(?:kosten|preis|betrag|gesamt|netto|brutto|summe|mwst|rabatt|anzahlung|umsatz|saldo)/i.test(k);
     if (looksLikeCurrency) {
-      return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return n.toLocaleString(localeTag(), { style: 'currency', currency: CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
-    return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+    return n.toLocaleString(localeTag(), { maximumFractionDigits: 2 });
   }
 
   return (
     <>
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0">
+      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0 max-sm:[&>button]:size-10 max-sm:[&>button]:grid max-sm:[&>button]:place-items-center max-sm:[&>button]:rounded-full max-sm:[&>button]:border max-sm:[&>button]:border-input max-sm:[&>button]:bg-background max-sm:[&>button]:opacity-100 max-sm:[&>button>svg]:size-5">
         <DialogHeader className="px-6 pt-5 pb-3 border-b flex flex-row items-center gap-3 space-y-0">
           <DialogTitle className="flex-1 truncate text-left">{DIALOG_INTENT}</DialogTitle>
           {enablePhotoScan && (
@@ -501,21 +581,21 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
               onClick={() => setAiOpen(o => !o)}
               aria-expanded={aiOpen}
               aria-controls="ai-fill-panel"
-              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all mr-7 shadow-sm ${
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 max-sm:py-2.5 max-sm:px-4 text-xs font-semibold transition-all mr-7 max-sm:mr-12 shadow-sm ${
                 aiOpen
                   ? 'bg-primary text-primary-foreground ring-2 ring-primary/30'
                   : 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/15 hover:border-primary/50'
               }`}
             >
               <IconSparkles className={`h-3.5 w-3.5 ${aiOpen ? '' : 'text-primary'}`} />
-              <span className="hidden sm:inline">KI-Ausfüllen</span>
+              <span className="hidden sm:inline">{t('smart_fill')}</span>
               <IconChevronDown className={`h-3 w-3 transition-transform ${aiOpen ? 'rotate-180' : ''}`} />
             </button>
           )}
         </DialogHeader>
         {enablePhotoScan && aiOpen && (
           <div id="ai-fill-panel" className="border-b bg-muted/20 px-6 py-4 space-y-3">
-            <p className="text-xs text-muted-foreground">Versteht Fotos, Dokumente und Text und füllt alles für dich aus</p>
+            <p className="text-xs text-muted-foreground">{t('scan_header_sub')}</p>
             <div className="flex items-start gap-2 pl-0.5">
               <Checkbox
                 id="ai-use-personal-info"
@@ -525,21 +605,21 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
               />
               <span className="text-xs text-muted-foreground leading-snug">
                 <Label htmlFor="ai-use-personal-info" className="text-xs font-normal text-muted-foreground cursor-pointer inline">
-                  KI-Assistent darf zusätzlich Informationen zu meiner Person verwenden
+                  {t('useinfo_label')}
                 </Label>
                 {' '}
                 <button type="button" onClick={handleShowProfileInfo} className="text-xs text-primary hover:underline whitespace-nowrap">
-                  {profileLoading ? 'Lade...' : '(mehr Infos)'}
+                  {profileLoading ? t('useinfo_loading') : `(${t('useinfo_more')})`}
                 </button>
               </span>
             </div>
             {showProfileInfo && (
               <div className="rounded-md border bg-muted/50 p-2 text-xs max-h-40 overflow-y-auto">
-                <p className="font-medium mb-1">Folgende Infos über dich können von der KI genutzt werden:</p>
+                <p className="font-medium mb-1">{t('profile_preamble')}</p>
                 {profileData ? Object.values(profileData).map((v, i) => (
                   <span key={i}>{i > 0 && ", "}{typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
                 )) : (
-                  <span className="text-muted-foreground">Profil konnte nicht geladen werden</span>
+                  <span className="text-muted-foreground">{t('useinfo_error')}</span>
                 )}
               </div>
             )}
@@ -570,8 +650,8 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
                     <IconLoader2 className="h-7 w-7 text-primary animate-spin" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium">KI analysiert...</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Felder werden automatisch ausgefüllt</p>
+                    <p className="text-sm font-medium">{t('scan_analyzing')}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t('scan_analyzing_sub')}</p>
                   </div>
                 </div>
               ) : scanSuccess ? (
@@ -580,8 +660,8 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
                     <IconCircleCheck className="h-7 w-7 text-green-600 dark:text-green-400" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium text-green-700 dark:text-green-400">Felder ausgefüllt!</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Prüfe die Werte und passe sie ggf. an</p>
+                    <p className="text-sm font-medium text-green-700 dark:text-green-400">{t('scan_success')}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t('scan_success_sub')}</p>
                   </div>
                 </div>
               ) : (
@@ -590,7 +670,7 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
                     <IconPhotoPlus className="h-7 w-7 text-primary/70" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium">Foto oder Dokument hierher ziehen oder auswählen</p>
+                    <p className="text-sm font-medium">{t('scan_upload')}</p>
                   </div>
                 </div>
               )}
@@ -614,11 +694,11 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
             <div className="grid grid-cols-3 gap-2">
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); cameraInputRef.current?.click(); }}>
-                <IconCamera className="h-3.5 w-3.5 mr-1" />Kamera
+                <IconCamera className="h-3.5 w-3.5 mr-1" />{t('scan_camera_btn')}
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-                <IconUpload className="h-3.5 w-3.5 mr-1" />Foto wählen
+                <IconUpload className="h-3.5 w-3.5 mr-1" />{t('scan_file_btn')}
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => {
@@ -629,13 +709,13 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
                     setTimeout(() => { if (fileInputRef.current) fileInputRef.current.accept = 'image/*,application/pdf'; }, 100);
                   }
                 }}>
-                <IconFileText className="h-3.5 w-3.5 mr-1" />Dokument
+                <IconFileText className="h-3.5 w-3.5 mr-1" />{t('scan_doc_btn')}
               </Button>
             </div>
 
             <div className="relative">
               <Textarea
-                placeholder="Text eingeben oder einfügen, z.B. Notizen, E-Mails, Beschreibungen..."
+                placeholder={t('scan_text_placeholder')}
                 value={aiText}
                 onChange={e => {
                   setAiText(e.target.value);
@@ -663,7 +743,7 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
                     if (text) setAiText(prev => prev ? prev + '\n' + text : text);
                   } catch {}
                 }}
-                title="Paste"
+                title={t('paste')}
               >
                 <IconClipboard className="h-4 w-4" />
               </button>
@@ -677,21 +757,37 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
                 disabled={scanning}
                 onClick={() => handleAiExtract()}
               >
-                <IconSparkles className="h-3.5 w-3.5 mr-1.5" />Analysieren
+                <IconSparkles className="h-3.5 w-3.5 mr-1.5" />{t('scan_text_analyze')}
               </Button>
             )}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 min-w-0">
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 min-w-0 max-sm:[&_input]:h-11">
           <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-4 min-w-0">
             {(() => {
               const renderField = (k: string) => {
                 const inlineHints = computedLayout.anchors[k] ?? [];
                 const refs = applookupRefs[k] ?? [];
+                // A field the plan gives to a TOOL. On CREATE it is not shown
+                // at all — the value does not exist yet and typing one only
+                // gets overwritten. On EDIT it stays a normal input with a
+                // note: when a tool could not compose its value (a missing
+                // ingredient), this is the only place to repair the record.
+                if (SYSTEM_ASSIGNED.includes(k) && !recordId) {
+                  return (
+                    <div key={k} className="space-y-1.5 min-w-0">
+                      <Label>{fieldLabel('unternehmen', k)}</Label>
+                      <p className="text-sm text-muted-foreground">{t('assigned_by_system')}</p>
+                    </div>
+                  );
+                }
                 return (
                   <div key={k} className="space-y-1.5 min-w-0">
                     {fieldBlocks[k]}
+                    {SYSTEM_ASSIGNED.includes(k) && (
+                      <p className="text-xs text-muted-foreground">{t('assigned_by_system')}</p>
+                    )}
                     {refs.map(({ lookupKey }) => {
                       // Show the live numeric value the formula will pull from
                       // the selected lookup target (e.g. "Monatspreis: 34,90 €"
@@ -769,19 +865,32 @@ export function UnternehmenDialog({ open, onClose, onSubmit, defaultValues, reco
                 })()}
               </div>
             )}
+            {showErrors && missingRequired.length > 0 && (
+              <p className="text-xs text-destructive flex items-center gap-1.5" role="alert">
+                <IconAlertCircle className="h-3.5 w-3.5 shrink-0" />
+                {t('missing_required')}
+              </p>
+            )}
             {recordId && (
               <div className="pt-2 border-t border-border">
                 <AttachmentsSection appId={APP_IDS.UNTERNEHMEN} recordId={recordId} />
               </div>
             )}
           </div>
-          <DialogFooter className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-3 gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>Abbrechen</Button>
+          {submitError && (
+            <div className="flex items-start gap-2 border-t border-destructive/20 bg-destructive/10 px-6 py-2.5 text-sm text-destructive" role="alert">
+              <IconAlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span className="min-w-0 break-words">{submitError}</span>
+            </div>
+          )}
+          <DialogFooter className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-3 gap-2 max-sm:flex-row">
+            <Button type="button" variant="outline" onClick={onClose} className="max-sm:h-12 max-sm:flex-1 max-sm:text-base">{t('cancel')}</Button>
             <Button
               type="submit"
-              disabled={saving || !isDirty}
+              className="max-sm:h-12 max-sm:flex-1 max-sm:text-base"
+              disabled={saving || !isDirty || (showErrors && missingRequired.length > 0)}
             >
-              {saving ? 'Speichern...' : defaultValues ? 'Speichern' : 'Erstellen'}
+              {saving ? t('saving') : defaultValues ? t('save') : t('create')}
             </Button>
           </DialogFooter>
         </form>

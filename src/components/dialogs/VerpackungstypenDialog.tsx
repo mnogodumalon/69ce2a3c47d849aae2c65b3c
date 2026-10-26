@@ -1,6 +1,21 @@
+/**
+ * VerpackungstypenDialog — pre-generated create/edit dialog for Verpackungstypen.
+ *
+ * Props: open, onClose, onSubmit(fields) => Promise<void>, defaultValues?,
+ * recordId? (pass when EDITING — enables the attachments section),
+ * unternehmenList (full hook array — resolves the Unternehmen applookup),
+ * enablePhotoScan?, enablePhotoLocation?.
+ *
+ * defaultValues is SHAPE-TOLERANT and its prop type is the EXPORTED
+ * VerpackungstypenDialogDefaults — NOT the entity field type: lookup fields accept
+ * the bare KEY string (or LookupValue), applookup fields the bare record id
+ * (or record URL); the dialog normalizes. Type prefill STATE with the export:
+ *  ❌ useState<Partial<Verpackungstypen['fields']>>({ … })   // LookupValue fields reject string prefills (TS2322)
+ *  ✓ useState<VerpackungstypenDialogDefaults | undefined>(undefined)
+ */
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import type { Verpackungstypen, Unternehmen } from '@/types/app';
-import { APP_IDS } from '@/types/app';
+import type { Verpackungstypen, Unternehmen, LookupValue } from '@/types/app';
+import { APP_IDS, LOOKUP_OPTIONS } from '@/types/app';
 import { extractRecordId, createRecordUrl, cleanFieldsForApi, getUserProfile, LivingAppsService } from '@/services/livingAppsService';
 import {
   Dialog, DialogContent, DialogHeader,
@@ -13,6 +28,8 @@ import type { ComputedContext } from '@/config/form-enhancements/types';
 import { applyFieldOrder, flattenFieldOrder, applyDefaults, evalComputed, numberInputProps, clampNumberValue, classifyComputed, extractApplookupRefs, mergeApplookupRefs, resolveApplookupRef } from '@/config/form-enhancements/types';
 import { formEnhancements, computedDeps, computedApplookupRefs } from '@/config/form-enhancements/Verpackungstypen';
 import { AttachmentsSection } from '@/components/AttachmentsSection';
+import { requiredMessage } from '@/lib/journey/messages';
+import { t, appLabel, fieldLabel, lookupLabel, localeTag, CURRENCY } from '@/i18n';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select, SelectContent, SelectItem,
@@ -21,15 +38,26 @@ import {
 import { Combobox } from '@/components/Combobox';
 import { UnternehmenDialog } from '@/components/dialogs/UnternehmenDialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { IconCamera, IconChevronDown, IconCircleCheck, IconClipboard, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
+import { IconAlertCircle, IconCamera, IconChevronDown, IconCircleCheck, IconClipboard, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
 import { fileToDataUri, extractFromInput, extractPhotoMeta, reverseGeocode } from '@/lib/ai';
 import { lookupKey, lookupKeys } from '@/lib/formatters';
+
+/** Widened prefill type for VerpackungstypenDialog.defaultValues — see file header. */
+export type VerpackungstypenDialogDefaults = Omit<Verpackungstypen['fields'], 'verwendungszweck' | 'material_hauptkategorie' | 'recyclingfaehigkeit_kategorie' | 'ppwr_quoten_zuordnung'> & {
+    verwendungszweck?: LookupValue | string;
+    material_hauptkategorie?: LookupValue | string;
+    recyclingfaehigkeit_kategorie?: LookupValue | string;
+    ppwr_quoten_zuordnung?: (LookupValue | string)[];
+  };
 
 interface VerpackungstypenDialogProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (fields: Verpackungstypen['fields']) => Promise<void>;
-  defaultValues?: Verpackungstypen['fields'];
+  /** SHAPE-TOLERANT: lookup fields accept the bare key (string) or the
+   *  LookupValue object; applookup fields the bare record id or the full
+   *  record URL — the dialog normalizes both. */
+  defaultValues?: VerpackungstypenDialogDefaults;
   /** Record id when editing — enables the attachments section. Omit on create. */
   recordId?: string;
   unternehmenList: Unternehmen[];
@@ -37,20 +65,51 @@ interface VerpackungstypenDialogProps {
   enablePhotoLocation?: boolean;
 }
 
+// defaultValues are SHAPE-TOLERANT: the dialog resolves bare lookup keys via
+// its own options and bare record ids via the field's target app — consumers
+// never carry the LookupValue/record-URL shape in their head.
+const NORMALIZE_LOOKUPS: Record<string, readonly { key: string; label: string }[]> = {
+  verwendungszweck: LOOKUP_OPTIONS['verpackungstypen']?.['verwendungszweck'] ?? [],
+  material_hauptkategorie: LOOKUP_OPTIONS['verpackungstypen']?.['material_hauptkategorie'] ?? [],
+  recyclingfaehigkeit_kategorie: LOOKUP_OPTIONS['verpackungstypen']?.['recyclingfaehigkeit_kategorie'] ?? [],
+  ppwr_quoten_zuordnung: LOOKUP_OPTIONS['verpackungstypen']?.['ppwr_quoten_zuordnung'] ?? [],
+};
+const NORMALIZE_APPLOOKUPS: Record<string, string> = {
+  unternehmen_ref: APP_IDS.UNTERNEHMEN,
+};
+function normalizeDefaults(values: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...values };
+  for (const [k, opts] of Object.entries(NORMALIZE_LOOKUPS)) {
+    const v = out[k];
+    if (typeof v === 'string') out[k] = opts.find(o => o.key === v) ?? { key: v, label: v };
+    else if (Array.isArray(v)) out[k] = v.map(x => (typeof x === 'string' ? opts.find(o => o.key === x) ?? { key: x, label: x } : x));
+  }
+  for (const [k, appId] of Object.entries(NORMALIZE_APPLOOKUPS)) {
+    const v = out[k];
+    if (typeof v === 'string' && v !== '' && !v.startsWith('http')) out[k] = createRecordUrl(appId, v);
+    else if (Array.isArray(v)) out[k] = v.map(x => (typeof x === 'string' && x !== '' && !x.startsWith('http') ? createRecordUrl(appId, x) : x));
+  }
+  return out;
+}
+
 export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues, recordId, unternehmenList, enablePhotoScan = true, enablePhotoLocation = true }: VerpackungstypenDialogProps) {
   const [fields, setFields] = useState<Partial<Verpackungstypen['fields']>>({});
   const [saving, setSaving] = useState(false);
+  const normalizedDefaults = useMemo<Record<string, unknown> | undefined>(
+    () => (defaultValues ? normalizeDefaults(defaultValues as Record<string, unknown>) : undefined),
+    [defaultValues],
+  );
   // Dirty-tracking: in edit-mode the Speichern button is disabled until the
   // user actually changes something. JSON.stringify is good enough for our
   // fields (plain values + LookupValue objects + string arrays).
   const isDirty = useMemo(() => {
-    if (!defaultValues) return true;  // create-mode: always allow submit
+    if (!normalizedDefaults) return true;  // create-mode: always allow submit
     try {
-      return JSON.stringify(fields) !== JSON.stringify(defaultValues);
+      return JSON.stringify(fields) !== JSON.stringify(normalizedDefaults);
     } catch {
       return true;
     }
-  }, [fields, defaultValues]);
+  }, [fields, normalizedDefaults]);
   // Inline-Create state for "Unternehmen" target. The dropdown's
   // "+ Neuer …" option opens a sub-dialog; on submit we POST, add the new
   // record to the local `extraUnternehmen` list, and select it in
@@ -68,6 +127,14 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     setCreateUnternehmenInitial(q);
     setCreateUnternehmenOpen(true);
   }
+  // Fields the plan assigns to a tool (empty without a plan).
+  const SYSTEM_ASSIGNED: string[] = [];
+  const [showErrors, setShowErrors] = useState(false);
+  const REQUIRED_FIELDS = ['unternehmen_ref', 'verpackungs_id', 'verpackungsname', 'verwendungszweck', 'material_hauptkategorie'] as const;
+  const missingRequired = REQUIRED_FIELDS.filter(k => {
+    const v = (fields as Record<string, unknown>)[k];
+    return v == null || v === '' || (Array.isArray(v) && v.length === 0);
+  });
   const [aiOpen, setAiOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
@@ -118,12 +185,13 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
 
   useEffect(() => {
     if (open) {
-      setFields(applyDefaults((defaultValues ?? {}) as Record<string, unknown>, formEnhancements.defaults) as Partial<Verpackungstypen['fields']>);
+      setFields(applyDefaults(normalizedDefaults ?? {}, formEnhancements.defaults) as Partial<Verpackungstypen['fields']>);
       setPreview(null);
       setScanSuccess(false);
       setAiText('');
+      setSubmitError(null);
     }
-  }, [open, defaultValues]);
+  }, [open, normalizedDefaults]);
   useEffect(() => {
     try { localStorage.setItem('ai-use-personal-info', String(usePersonalInfo)); } catch {}
   }, [usePersonalInfo]);
@@ -141,9 +209,20 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     }
   }
 
+  // Submit errors surface IN the dialog (it is modal — a banner in the page
+  // body would be hidden behind it). A consumer onSubmit that THROWS (the
+  // documented "throw to prevent closing" validation pattern) lands here:
+  // the dialog stays open, nothing is saved, the message is visible.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (missingRequired.length > 0) {
+      setShowErrors(true);
+      return;
+    }
     setSaving(true);
+    setSubmitError(null);
     try {
       // Fill empty number slots from computed values; user-typed values always win.
       // CRITICAL: only backend-mapped keys may be backfilled. Virtual computeds
@@ -162,6 +241,8 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
       const clean = cleanFieldsForApi(merged, 'verpackungstypen');
       await onSubmit(clean as Verpackungstypen['fields']);
       onClose();
+    } catch (err) {
+      setSubmitError(err instanceof Error && err.message ? err.message : t('submit_error'));
     } finally {
       setSaving(false);
     }
@@ -233,7 +314,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
       setScanSuccess(true);
       setTimeout(() => setScanSuccess(false), 3000);
     } catch (err) {
-      console.error('Scan fehlgeschlagen:', err);
+      console.error(`${t('scan_error')}:`, err);
       alert(err instanceof Error ? err.message : String(err));
     } finally {
       setScanning(false);
@@ -268,12 +349,14 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     }
   }, []);
 
-  const DIALOG_INTENT = defaultValues ? 'Verpackungstypen bearbeiten' : 'Verpackungstypen hinzufügen';
+  const DIALOG_INTENT = defaultValues
+    ? t('edit_entity', { entity: appLabel('verpackungstypen') })
+    : t('new_entity', { entity: appLabel('verpackungstypen') });
 
   const fieldBlocks: Record<string, React.ReactNode> = {
     'unternehmen_ref': (
       <div key="unternehmen_ref" className="space-y-1.5">
-        <Label htmlFor="unternehmen_ref">Unternehmen</Label>
+        <Label htmlFor="unternehmen_ref">{fieldLabel('verpackungstypen', 'unternehmen_ref')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Combobox
           id="unternehmen_ref"
           placeholder=""
@@ -283,38 +366,47 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
           }))}
           value={extractRecordId(fields.unternehmen_ref)}
           onChange={id => setFields(f => ({ ...f, unternehmen_ref: id ? createRecordUrl(APP_IDS.UNTERNEHMEN, id) : undefined }))}
-          searchPlaceholder="Suchen…"
-          emptyText="Kein Treffer"
           onCreateNew={(q) => openCreateUnternehmen("unternehmen_ref", q)}
-          createLabel="Neu in Unternehmen"
+          createLabel={t('create_in', { entity: appLabel('unternehmen') })}
         />
+        {showErrors && !fields.unternehmen_ref && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('verpackungstypen', 'unternehmen_ref')}</p>
+        )}
       </div>
     ),
     'verpackungs_id': (
       <div key="verpackungs_id" className="space-y-1.5">
-        <Label htmlFor="verpackungs_id">Verpackungs-ID</Label>
+        <Label htmlFor="verpackungs_id">{fieldLabel('verpackungstypen', 'verpackungs_id')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="verpackungs_id"
           placeholder=""
           value={fields.verpackungs_id ?? ''}
           onChange={e => setFields(f => ({ ...f, verpackungs_id: e.target.value }))}
+          required
         />
+        {showErrors && !fields.verpackungs_id && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('verpackungstypen', 'verpackungs_id')}</p>
+        )}
       </div>
     ),
     'verpackungsname': (
       <div key="verpackungsname" className="space-y-1.5">
-        <Label htmlFor="verpackungsname">Name der Verpackung</Label>
+        <Label htmlFor="verpackungsname">{fieldLabel('verpackungstypen', 'verpackungsname')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="verpackungsname"
           placeholder=""
           value={fields.verpackungsname ?? ''}
           onChange={e => setFields(f => ({ ...f, verpackungsname: e.target.value }))}
+          required
         />
+        {showErrors && !fields.verpackungsname && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('verpackungstypen', 'verpackungsname')}</p>
+        )}
       </div>
     ),
     'beschreibung': (
       <div key="beschreibung" className="space-y-1.5">
-        <Label htmlFor="beschreibung">Beschreibung</Label>
+        <Label htmlFor="beschreibung">{fieldLabel('verpackungstypen', 'beschreibung')}</Label>
         <Textarea
           id="beschreibung"
           placeholder=""
@@ -326,7 +418,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'produktkategorie': (
       <div key="produktkategorie" className="space-y-1.5">
-        <Label htmlFor="produktkategorie">Produktkategorie</Label>
+        <Label htmlFor="produktkategorie">{fieldLabel('verpackungstypen', 'produktkategorie')}</Label>
         <Input
           id="produktkategorie"
           placeholder=""
@@ -337,86 +429,92 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'verwendungszweck': (
       <div key="verwendungszweck" className="space-y-1.5">
-        <Label htmlFor="verwendungszweck">Verwendungszweck</Label>
+        <Label htmlFor="verwendungszweck">{fieldLabel('verpackungstypen', 'verwendungszweck')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <div role="radiogroup" className="flex flex-wrap gap-1.5">
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.verwendungszweck) === 'verkaufsverpackung'}
             onClick={() => setFields(f => ({ ...f, verwendungszweck: (lookupKey(f.verwendungszweck) === 'verkaufsverpackung' ? undefined : 'verkaufsverpackung') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.verwendungszweck) === 'verkaufsverpackung'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Verkaufsverpackung
+            {lookupLabel('verpackungstypen', 'verwendungszweck', 'verkaufsverpackung') ?? 'Verkaufsverpackung'}
           </button>
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.verwendungszweck) === 'versandverpackung'}
             onClick={() => setFields(f => ({ ...f, verwendungszweck: (lookupKey(f.verwendungszweck) === 'versandverpackung' ? undefined : 'versandverpackung') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.verwendungszweck) === 'versandverpackung'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Versandverpackung
+            {lookupLabel('verpackungstypen', 'verwendungszweck', 'versandverpackung') ?? 'Versandverpackung'}
           </button>
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.verwendungszweck) === 'transportverpackung'}
             onClick={() => setFields(f => ({ ...f, verwendungszweck: (lookupKey(f.verwendungszweck) === 'transportverpackung' ? undefined : 'transportverpackung') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.verwendungszweck) === 'transportverpackung'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Transportverpackung
+            {lookupLabel('verpackungstypen', 'verwendungszweck', 'transportverpackung') ?? 'Transportverpackung'}
           </button>
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.verwendungszweck) === 'serviceverpackung'}
             onClick={() => setFields(f => ({ ...f, verwendungszweck: (lookupKey(f.verwendungszweck) === 'serviceverpackung' ? undefined : 'serviceverpackung') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.verwendungszweck) === 'serviceverpackung'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Serviceverpackung
+            {lookupLabel('verpackungstypen', 'verwendungszweck', 'serviceverpackung') ?? 'Serviceverpackung'}
           </button>
         </div>
+        {showErrors && !fields.verwendungszweck && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('verpackungstypen', 'verwendungszweck')}</p>
+        )}
       </div>
     ),
     'material_hauptkategorie': (
       <div key="material_hauptkategorie" className="space-y-1.5">
-        <Label htmlFor="material_hauptkategorie">Material-Hauptkategorie</Label>
+        <Label htmlFor="material_hauptkategorie">{fieldLabel('verpackungstypen', 'material_hauptkategorie')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Select
           value={lookupKey(fields.material_hauptkategorie) ?? ''}
           onValueChange={v => setFields(f => ({ ...f, material_hauptkategorie: v === 'none' ? undefined : v as any }))}
         >
-          <SelectTrigger id="material_hauptkategorie"><SelectValue placeholder="" /></SelectTrigger>
+          <SelectTrigger id="material_hauptkategorie" className="max-sm:h-11"><SelectValue placeholder="" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="none">—</SelectItem>
-            <SelectItem value="kunststoff">Kunststoff</SelectItem>
-            <SelectItem value="papier_pappe">Papier/Pappe</SelectItem>
-            <SelectItem value="glas">Glas</SelectItem>
-            <SelectItem value="metall">Metall</SelectItem>
-            <SelectItem value="verbund">Verbund</SelectItem>
-            <SelectItem value="sonstiges">Sonstiges</SelectItem>
+            <SelectItem value="kunststoff">{lookupLabel('verpackungstypen', 'material_hauptkategorie', 'kunststoff') ?? 'Kunststoff'}</SelectItem>
+            <SelectItem value="papier_pappe">{lookupLabel('verpackungstypen', 'material_hauptkategorie', 'papier_pappe') ?? 'Papier/Pappe'}</SelectItem>
+            <SelectItem value="glas">{lookupLabel('verpackungstypen', 'material_hauptkategorie', 'glas') ?? 'Glas'}</SelectItem>
+            <SelectItem value="metall">{lookupLabel('verpackungstypen', 'material_hauptkategorie', 'metall') ?? 'Metall'}</SelectItem>
+            <SelectItem value="verbund">{lookupLabel('verpackungstypen', 'material_hauptkategorie', 'verbund') ?? 'Verbund'}</SelectItem>
+            <SelectItem value="sonstiges">{lookupLabel('verpackungstypen', 'material_hauptkategorie', 'sonstiges') ?? 'Sonstiges'}</SelectItem>
           </SelectContent>
         </Select>
+        {showErrors && !fields.material_hauptkategorie && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('verpackungstypen', 'material_hauptkategorie')}</p>
+        )}
       </div>
     ),
     'materialzusammensetzung': (
       <div key="materialzusammensetzung" className="space-y-1.5">
-        <Label htmlFor="materialzusammensetzung">Detaillierte Materialzusammensetzung</Label>
+        <Label htmlFor="materialzusammensetzung">{fieldLabel('verpackungstypen', 'materialzusammensetzung')}</Label>
         <Textarea
           id="materialzusammensetzung"
           placeholder=""
@@ -428,7 +526,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'material_einzelmaterialien': (
       <div key="material_einzelmaterialien" className="space-y-1.5">
-        <Label htmlFor="material_einzelmaterialien">Einzelmaterialien (Bezeichnung)</Label>
+        <Label htmlFor="material_einzelmaterialien">{fieldLabel('verpackungstypen', 'material_einzelmaterialien')}</Label>
         <Input
           id="material_einzelmaterialien"
           placeholder=""
@@ -439,7 +537,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'material_prozentsaetze': (
       <div key="material_prozentsaetze" className="space-y-1.5">
-        <Label htmlFor="material_prozentsaetze">Materialanteile in %</Label>
+        <Label htmlFor="material_prozentsaetze">{fieldLabel('verpackungstypen', 'material_prozentsaetze')}</Label>
         <Input
           id="material_prozentsaetze"
           placeholder=""
@@ -450,7 +548,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'material_gewichte_g': (
       <div key="material_gewichte_g" className="space-y-1.5">
-        <Label htmlFor="material_gewichte_g">Materialgewichte in Gramm</Label>
+        <Label htmlFor="material_gewichte_g">{fieldLabel('verpackungstypen', 'material_gewichte_g')}</Label>
         <Input
           id="material_gewichte_g"
           placeholder=""
@@ -461,10 +559,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'laenge_mm': (
       <div key="laenge_mm" className="space-y-1.5">
-        <Label htmlFor="laenge_mm">Länge (mm)</Label>
+        <Label htmlFor="laenge_mm">{fieldLabel('verpackungstypen', 'laenge_mm')}</Label>
         <Input
           id="laenge_mm"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'laenge_mm')}
           placeholder=""
@@ -475,10 +574,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'breite_mm': (
       <div key="breite_mm" className="space-y-1.5">
-        <Label htmlFor="breite_mm">Breite (mm)</Label>
+        <Label htmlFor="breite_mm">{fieldLabel('verpackungstypen', 'breite_mm')}</Label>
         <Input
           id="breite_mm"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'breite_mm')}
           placeholder=""
@@ -489,10 +589,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'hoehe_mm': (
       <div key="hoehe_mm" className="space-y-1.5">
-        <Label htmlFor="hoehe_mm">Höhe (mm)</Label>
+        <Label htmlFor="hoehe_mm">{fieldLabel('verpackungstypen', 'hoehe_mm')}</Label>
         <Input
           id="hoehe_mm"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'hoehe_mm')}
           placeholder=""
@@ -503,10 +604,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'wandstaerke_mm': (
       <div key="wandstaerke_mm" className="space-y-1.5">
-        <Label htmlFor="wandstaerke_mm">Wandstärke (mm)</Label>
+        <Label htmlFor="wandstaerke_mm">{fieldLabel('verpackungstypen', 'wandstaerke_mm')}</Label>
         <Input
           id="wandstaerke_mm"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'wandstaerke_mm')}
           placeholder=""
@@ -517,10 +619,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'volumen_ml': (
       <div key="volumen_ml" className="space-y-1.5">
-        <Label htmlFor="volumen_ml">Volumen (ml)</Label>
+        <Label htmlFor="volumen_ml">{fieldLabel('verpackungstypen', 'volumen_ml')}</Label>
         <Input
           id="volumen_ml"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'volumen_ml')}
           placeholder=""
@@ -531,10 +634,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'gesamtgewicht_g': (
       <div key="gesamtgewicht_g" className="space-y-1.5">
-        <Label htmlFor="gesamtgewicht_g">Gesamtgewicht (g)</Label>
+        <Label htmlFor="gesamtgewicht_g">{fieldLabel('verpackungstypen', 'gesamtgewicht_g')}</Label>
         <Input
           id="gesamtgewicht_g"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'gesamtgewicht_g')}
           placeholder=""
@@ -545,10 +649,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'rezyklat_postconsumer_prozent': (
       <div key="rezyklat_postconsumer_prozent" className="space-y-1.5">
-        <Label htmlFor="rezyklat_postconsumer_prozent">Post-Consumer-Rezyklatanteil (%)</Label>
+        <Label htmlFor="rezyklat_postconsumer_prozent">{fieldLabel('verpackungstypen', 'rezyklat_postconsumer_prozent')}</Label>
         <Input
           id="rezyklat_postconsumer_prozent"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'rezyklat_postconsumer_prozent')}
           placeholder=""
@@ -559,10 +664,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'rezyklat_postconsumer_kg_jahr': (
       <div key="rezyklat_postconsumer_kg_jahr" className="space-y-1.5">
-        <Label htmlFor="rezyklat_postconsumer_kg_jahr">Post-Consumer-Rezyklat (kg/Jahr)</Label>
+        <Label htmlFor="rezyklat_postconsumer_kg_jahr">{fieldLabel('verpackungstypen', 'rezyklat_postconsumer_kg_jahr')}</Label>
         <Input
           id="rezyklat_postconsumer_kg_jahr"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'rezyklat_postconsumer_kg_jahr')}
           placeholder=""
@@ -573,10 +679,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'rezyklat_postindustrial_prozent': (
       <div key="rezyklat_postindustrial_prozent" className="space-y-1.5">
-        <Label htmlFor="rezyklat_postindustrial_prozent">Post-Industrial-Rezyklatanteil (%)</Label>
+        <Label htmlFor="rezyklat_postindustrial_prozent">{fieldLabel('verpackungstypen', 'rezyklat_postindustrial_prozent')}</Label>
         <Input
           id="rezyklat_postindustrial_prozent"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'rezyklat_postindustrial_prozent')}
           placeholder=""
@@ -587,10 +694,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'rezyklat_postindustrial_kg_jahr': (
       <div key="rezyklat_postindustrial_kg_jahr" className="space-y-1.5">
-        <Label htmlFor="rezyklat_postindustrial_kg_jahr">Post-Industrial-Rezyklat (kg/Jahr)</Label>
+        <Label htmlFor="rezyklat_postindustrial_kg_jahr">{fieldLabel('verpackungstypen', 'rezyklat_postindustrial_kg_jahr')}</Label>
         <Input
           id="rezyklat_postindustrial_kg_jahr"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'rezyklat_postindustrial_kg_jahr')}
           placeholder=""
@@ -601,69 +709,70 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'recyclingfaehigkeit_kategorie': (
       <div key="recyclingfaehigkeit_kategorie" className="space-y-1.5">
-        <Label htmlFor="recyclingfaehigkeit_kategorie">Recyclingfähigkeit – Kategorie</Label>
+        <Label htmlFor="recyclingfaehigkeit_kategorie">{fieldLabel('verpackungstypen', 'recyclingfaehigkeit_kategorie')}</Label>
         <div role="radiogroup" className="flex flex-wrap gap-1.5">
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.recyclingfaehigkeit_kategorie) === 'gut_recyclingfaehig'}
             onClick={() => setFields(f => ({ ...f, recyclingfaehigkeit_kategorie: (lookupKey(f.recyclingfaehigkeit_kategorie) === 'gut_recyclingfaehig' ? undefined : 'gut_recyclingfaehig') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.recyclingfaehigkeit_kategorie) === 'gut_recyclingfaehig'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Gut recyclingfähig
+            {lookupLabel('verpackungstypen', 'recyclingfaehigkeit_kategorie', 'gut_recyclingfaehig') ?? 'Gut recyclingfähig'}
           </button>
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.recyclingfaehigkeit_kategorie) === 'eingeschraenkt_recyclingfaehig'}
             onClick={() => setFields(f => ({ ...f, recyclingfaehigkeit_kategorie: (lookupKey(f.recyclingfaehigkeit_kategorie) === 'eingeschraenkt_recyclingfaehig' ? undefined : 'eingeschraenkt_recyclingfaehig') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.recyclingfaehigkeit_kategorie) === 'eingeschraenkt_recyclingfaehig'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Eingeschränkt recyclingfähig
+            {lookupLabel('verpackungstypen', 'recyclingfaehigkeit_kategorie', 'eingeschraenkt_recyclingfaehig') ?? 'Eingeschränkt recyclingfähig'}
           </button>
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.recyclingfaehigkeit_kategorie) === 'nicht_recyclingfaehig'}
             onClick={() => setFields(f => ({ ...f, recyclingfaehigkeit_kategorie: (lookupKey(f.recyclingfaehigkeit_kategorie) === 'nicht_recyclingfaehig' ? undefined : 'nicht_recyclingfaehig') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.recyclingfaehigkeit_kategorie) === 'nicht_recyclingfaehig'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Nicht recyclingfähig
+            {lookupLabel('verpackungstypen', 'recyclingfaehigkeit_kategorie', 'nicht_recyclingfaehig') ?? 'Nicht recyclingfähig'}
           </button>
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.recyclingfaehigkeit_kategorie) === 'nicht_bewertet'}
             onClick={() => setFields(f => ({ ...f, recyclingfaehigkeit_kategorie: (lookupKey(f.recyclingfaehigkeit_kategorie) === 'nicht_bewertet' ? undefined : 'nicht_bewertet') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.recyclingfaehigkeit_kategorie) === 'nicht_bewertet'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Nicht bewertet
+            {lookupLabel('verpackungstypen', 'recyclingfaehigkeit_kategorie', 'nicht_bewertet') ?? 'Nicht bewertet'}
           </button>
         </div>
       </div>
     ),
     'recyclingfaehigkeit_score': (
       <div key="recyclingfaehigkeit_score" className="space-y-1.5">
-        <Label htmlFor="recyclingfaehigkeit_score">Recyclingfähigkeit – Score (0–100)</Label>
+        <Label htmlFor="recyclingfaehigkeit_score">{fieldLabel('verpackungstypen', 'recyclingfaehigkeit_score')}</Label>
         <Input
           id="recyclingfaehigkeit_score"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'recyclingfaehigkeit_score')}
           placeholder=""
@@ -674,7 +783,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'recyclingfaehigkeit_referenz': (
       <div key="recyclingfaehigkeit_referenz" className="space-y-1.5">
-        <Label htmlFor="recyclingfaehigkeit_referenz">Referenz Prüfstandard / Gutachten</Label>
+        <Label htmlFor="recyclingfaehigkeit_referenz">{fieldLabel('verpackungstypen', 'recyclingfaehigkeit_referenz')}</Label>
         <Input
           id="recyclingfaehigkeit_referenz"
           placeholder=""
@@ -685,23 +794,24 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'mehrwegfaehig': (
       <div key="mehrwegfaehig" className="space-y-1.5">
-        <Label htmlFor="mehrwegfaehig">Mehrwegfähig</Label>
+        <Label htmlFor="mehrwegfaehig">{fieldLabel('verpackungstypen', 'mehrwegfaehig')}</Label>
         <div className="flex items-center gap-2 pt-1">
           <Checkbox
             id="mehrwegfaehig"
             checked={!!fields.mehrwegfaehig}
             onCheckedChange={(v) => setFields(f => ({ ...f, mehrwegfaehig: !!v }))}
           />
-          <Label htmlFor="mehrwegfaehig" className="font-normal">Mehrwegfähig</Label>
+          <Label htmlFor="mehrwegfaehig" className="font-normal">{fieldLabel('verpackungstypen', 'mehrwegfaehig')}</Label>
         </div>
       </div>
     ),
     'erwartete_umlaeufe': (
       <div key="erwartete_umlaeufe" className="space-y-1.5">
-        <Label htmlFor="erwartete_umlaeufe">Erwartete Umläufe</Label>
+        <Label htmlFor="erwartete_umlaeufe">{fieldLabel('verpackungstypen', 'erwartete_umlaeufe')}</Label>
         <Input
           id="erwartete_umlaeufe"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'erwartete_umlaeufe')}
           placeholder=""
@@ -712,7 +822,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'ruecknahmesystem': (
       <div key="ruecknahmesystem" className="space-y-1.5">
-        <Label htmlFor="ruecknahmesystem">Beschreibung Rücknahmesystem</Label>
+        <Label htmlFor="ruecknahmesystem">{fieldLabel('verpackungstypen', 'ruecknahmesystem')}</Label>
         <Textarea
           id="ruecknahmesystem"
           placeholder=""
@@ -724,7 +834,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     ),
     'ppwr_quoten_zuordnung': (
       <div key="ppwr_quoten_zuordnung" className="space-y-1.5">
-        <Label htmlFor="ppwr_quoten_zuordnung">Zuordnung zu PPWR-Quoten</Label>
+        <Label htmlFor="ppwr_quoten_zuordnung">{fieldLabel('verpackungstypen', 'ppwr_quoten_zuordnung')}</Label>
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <Checkbox
@@ -738,7 +848,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
                 });
               }}
             />
-            <Label htmlFor="ppwr_quoten_zuordnung_rezyklatquote" className="font-normal">Rezyklatquote</Label>
+            <Label htmlFor="ppwr_quoten_zuordnung_rezyklatquote" className="font-normal">{lookupLabel('verpackungstypen', 'ppwr_quoten_zuordnung', 'rezyklatquote') ?? 'Rezyklatquote'}</Label>
           </div>
           <div className="flex items-center gap-2">
             <Checkbox
@@ -752,7 +862,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
                 });
               }}
             />
-            <Label htmlFor="ppwr_quoten_zuordnung_mehrwegquote" className="font-normal">Mehrwegquote</Label>
+            <Label htmlFor="ppwr_quoten_zuordnung_mehrwegquote" className="font-normal">{lookupLabel('verpackungstypen', 'ppwr_quoten_zuordnung', 'mehrwegquote') ?? 'Mehrwegquote'}</Label>
           </div>
           <div className="flex items-center gap-2">
             <Checkbox
@@ -766,27 +876,27 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
                 });
               }}
             />
-            <Label htmlFor="ppwr_quoten_zuordnung_recyclingfaehigkeitsquote" className="font-normal">Recyclingfähigkeitsquote</Label>
+            <Label htmlFor="ppwr_quoten_zuordnung_recyclingfaehigkeitsquote" className="font-normal">{lookupLabel('verpackungstypen', 'ppwr_quoten_zuordnung', 'recyclingfaehigkeitsquote') ?? 'Recyclingfähigkeitsquote'}</Label>
           </div>
         </div>
       </div>
     ),
     'kennzeichnung_vollstaendig': (
       <div key="kennzeichnung_vollstaendig" className="space-y-1.5">
-        <Label htmlFor="kennzeichnung_vollstaendig">Kennzeichnung vollständig</Label>
+        <Label htmlFor="kennzeichnung_vollstaendig">{fieldLabel('verpackungstypen', 'kennzeichnung_vollstaendig')}</Label>
         <div className="flex items-center gap-2 pt-1">
           <Checkbox
             id="kennzeichnung_vollstaendig"
             checked={!!fields.kennzeichnung_vollstaendig}
             onCheckedChange={(v) => setFields(f => ({ ...f, kennzeichnung_vollstaendig: !!v }))}
           />
-          <Label htmlFor="kennzeichnung_vollstaendig" className="font-normal">Kennzeichnung vollständig</Label>
+          <Label htmlFor="kennzeichnung_vollstaendig" className="font-normal">{fieldLabel('verpackungstypen', 'kennzeichnung_vollstaendig')}</Label>
         </div>
       </div>
     ),
     'kennzeichnung_hinweise': (
       <div key="kennzeichnung_hinweise" className="space-y-1.5">
-        <Label htmlFor="kennzeichnung_hinweise">Hinweise zur Kennzeichnung</Label>
+        <Label htmlFor="kennzeichnung_hinweise">{fieldLabel('verpackungstypen', 'kennzeichnung_hinweise')}</Label>
         <Textarea
           id="kennzeichnung_hinweise"
           placeholder=""
@@ -865,15 +975,15 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
     // Backend-Feld mit €-Label ODER virtueller Computed-Key, dessen Name nach Geld aussieht.
     const looksLikeCurrency = CURRENCY_KEYS.has(k) || /(?:kosten|preis|betrag|gesamt|netto|brutto|summe|mwst|rabatt|anzahlung|umsatz|saldo)/i.test(k);
     if (looksLikeCurrency) {
-      return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return n.toLocaleString(localeTag(), { style: 'currency', currency: CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
-    return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+    return n.toLocaleString(localeTag(), { maximumFractionDigits: 2 });
   }
 
   return (
     <>
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0">
+      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0 max-sm:[&>button]:size-10 max-sm:[&>button]:grid max-sm:[&>button]:place-items-center max-sm:[&>button]:rounded-full max-sm:[&>button]:border max-sm:[&>button]:border-input max-sm:[&>button]:bg-background max-sm:[&>button]:opacity-100 max-sm:[&>button>svg]:size-5">
         <DialogHeader className="px-6 pt-5 pb-3 border-b flex flex-row items-center gap-3 space-y-0">
           <DialogTitle className="flex-1 truncate text-left">{DIALOG_INTENT}</DialogTitle>
           {enablePhotoScan && (
@@ -882,21 +992,21 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
               onClick={() => setAiOpen(o => !o)}
               aria-expanded={aiOpen}
               aria-controls="ai-fill-panel"
-              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all mr-7 shadow-sm ${
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 max-sm:py-2.5 max-sm:px-4 text-xs font-semibold transition-all mr-7 max-sm:mr-12 shadow-sm ${
                 aiOpen
                   ? 'bg-primary text-primary-foreground ring-2 ring-primary/30'
                   : 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/15 hover:border-primary/50'
               }`}
             >
               <IconSparkles className={`h-3.5 w-3.5 ${aiOpen ? '' : 'text-primary'}`} />
-              <span className="hidden sm:inline">KI-Ausfüllen</span>
+              <span className="hidden sm:inline">{t('smart_fill')}</span>
               <IconChevronDown className={`h-3 w-3 transition-transform ${aiOpen ? 'rotate-180' : ''}`} />
             </button>
           )}
         </DialogHeader>
         {enablePhotoScan && aiOpen && (
           <div id="ai-fill-panel" className="border-b bg-muted/20 px-6 py-4 space-y-3">
-            <p className="text-xs text-muted-foreground">Versteht Fotos, Dokumente und Text und füllt alles für dich aus</p>
+            <p className="text-xs text-muted-foreground">{t('scan_header_sub')}</p>
             <div className="flex items-start gap-2 pl-0.5">
               <Checkbox
                 id="ai-use-personal-info"
@@ -906,21 +1016,21 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
               />
               <span className="text-xs text-muted-foreground leading-snug">
                 <Label htmlFor="ai-use-personal-info" className="text-xs font-normal text-muted-foreground cursor-pointer inline">
-                  KI-Assistent darf zusätzlich Informationen zu meiner Person verwenden
+                  {t('useinfo_label')}
                 </Label>
                 {' '}
                 <button type="button" onClick={handleShowProfileInfo} className="text-xs text-primary hover:underline whitespace-nowrap">
-                  {profileLoading ? 'Lade...' : '(mehr Infos)'}
+                  {profileLoading ? t('useinfo_loading') : `(${t('useinfo_more')})`}
                 </button>
               </span>
             </div>
             {showProfileInfo && (
               <div className="rounded-md border bg-muted/50 p-2 text-xs max-h-40 overflow-y-auto">
-                <p className="font-medium mb-1">Folgende Infos über dich können von der KI genutzt werden:</p>
+                <p className="font-medium mb-1">{t('profile_preamble')}</p>
                 {profileData ? Object.values(profileData).map((v, i) => (
                   <span key={i}>{i > 0 && ", "}{typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
                 )) : (
-                  <span className="text-muted-foreground">Profil konnte nicht geladen werden</span>
+                  <span className="text-muted-foreground">{t('useinfo_error')}</span>
                 )}
               </div>
             )}
@@ -951,8 +1061,8 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
                     <IconLoader2 className="h-7 w-7 text-primary animate-spin" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium">KI analysiert...</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Felder werden automatisch ausgefüllt</p>
+                    <p className="text-sm font-medium">{t('scan_analyzing')}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t('scan_analyzing_sub')}</p>
                   </div>
                 </div>
               ) : scanSuccess ? (
@@ -961,8 +1071,8 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
                     <IconCircleCheck className="h-7 w-7 text-green-600 dark:text-green-400" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium text-green-700 dark:text-green-400">Felder ausgefüllt!</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Prüfe die Werte und passe sie ggf. an</p>
+                    <p className="text-sm font-medium text-green-700 dark:text-green-400">{t('scan_success')}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t('scan_success_sub')}</p>
                   </div>
                 </div>
               ) : (
@@ -971,7 +1081,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
                     <IconPhotoPlus className="h-7 w-7 text-primary/70" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium">Foto oder Dokument hierher ziehen oder auswählen</p>
+                    <p className="text-sm font-medium">{t('scan_upload')}</p>
                   </div>
                 </div>
               )}
@@ -995,11 +1105,11 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
             <div className="grid grid-cols-3 gap-2">
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); cameraInputRef.current?.click(); }}>
-                <IconCamera className="h-3.5 w-3.5 mr-1" />Kamera
+                <IconCamera className="h-3.5 w-3.5 mr-1" />{t('scan_camera_btn')}
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-                <IconUpload className="h-3.5 w-3.5 mr-1" />Foto wählen
+                <IconUpload className="h-3.5 w-3.5 mr-1" />{t('scan_file_btn')}
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => {
@@ -1010,13 +1120,13 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
                     setTimeout(() => { if (fileInputRef.current) fileInputRef.current.accept = 'image/*,application/pdf'; }, 100);
                   }
                 }}>
-                <IconFileText className="h-3.5 w-3.5 mr-1" />Dokument
+                <IconFileText className="h-3.5 w-3.5 mr-1" />{t('scan_doc_btn')}
               </Button>
             </div>
 
             <div className="relative">
               <Textarea
-                placeholder="Text eingeben oder einfügen, z.B. Notizen, E-Mails, Beschreibungen..."
+                placeholder={t('scan_text_placeholder')}
                 value={aiText}
                 onChange={e => {
                   setAiText(e.target.value);
@@ -1044,7 +1154,7 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
                     if (text) setAiText(prev => prev ? prev + '\n' + text : text);
                   } catch {}
                 }}
-                title="Paste"
+                title={t('paste')}
               >
                 <IconClipboard className="h-4 w-4" />
               </button>
@@ -1058,21 +1168,37 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
                 disabled={scanning}
                 onClick={() => handleAiExtract()}
               >
-                <IconSparkles className="h-3.5 w-3.5 mr-1.5" />Analysieren
+                <IconSparkles className="h-3.5 w-3.5 mr-1.5" />{t('scan_text_analyze')}
               </Button>
             )}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 min-w-0">
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 min-w-0 max-sm:[&_input]:h-11">
           <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-4 min-w-0">
             {(() => {
               const renderField = (k: string) => {
                 const inlineHints = computedLayout.anchors[k] ?? [];
                 const refs = applookupRefs[k] ?? [];
+                // A field the plan gives to a TOOL. On CREATE it is not shown
+                // at all — the value does not exist yet and typing one only
+                // gets overwritten. On EDIT it stays a normal input with a
+                // note: when a tool could not compose its value (a missing
+                // ingredient), this is the only place to repair the record.
+                if (SYSTEM_ASSIGNED.includes(k) && !recordId) {
+                  return (
+                    <div key={k} className="space-y-1.5 min-w-0">
+                      <Label>{fieldLabel('verpackungstypen', k)}</Label>
+                      <p className="text-sm text-muted-foreground">{t('assigned_by_system')}</p>
+                    </div>
+                  );
+                }
                 return (
                   <div key={k} className="space-y-1.5 min-w-0">
                     {fieldBlocks[k]}
+                    {SYSTEM_ASSIGNED.includes(k) && (
+                      <p className="text-xs text-muted-foreground">{t('assigned_by_system')}</p>
+                    )}
                     {refs.map(({ lookupKey }) => {
                       // Show the live numeric value the formula will pull from
                       // the selected lookup target (e.g. "Monatspreis: 34,90 €"
@@ -1150,19 +1276,32 @@ export function VerpackungstypenDialog({ open, onClose, onSubmit, defaultValues,
                 })()}
               </div>
             )}
+            {showErrors && missingRequired.length > 0 && (
+              <p className="text-xs text-destructive flex items-center gap-1.5" role="alert">
+                <IconAlertCircle className="h-3.5 w-3.5 shrink-0" />
+                {t('missing_required')}
+              </p>
+            )}
             {recordId && (
               <div className="pt-2 border-t border-border">
                 <AttachmentsSection appId={APP_IDS.VERPACKUNGSTYPEN} recordId={recordId} />
               </div>
             )}
           </div>
-          <DialogFooter className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-3 gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>Abbrechen</Button>
+          {submitError && (
+            <div className="flex items-start gap-2 border-t border-destructive/20 bg-destructive/10 px-6 py-2.5 text-sm text-destructive" role="alert">
+              <IconAlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span className="min-w-0 break-words">{submitError}</span>
+            </div>
+          )}
+          <DialogFooter className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-3 gap-2 max-sm:flex-row">
+            <Button type="button" variant="outline" onClick={onClose} className="max-sm:h-12 max-sm:flex-1 max-sm:text-base">{t('cancel')}</Button>
             <Button
               type="submit"
-              disabled={saving || !isDirty}
+              className="max-sm:h-12 max-sm:flex-1 max-sm:text-base"
+              disabled={saving || !isDirty || (showErrors && missingRequired.length > 0)}
             >
-              {saving ? 'Speichern...' : defaultValues ? 'Speichern' : 'Erstellen'}
+              {saving ? t('saving') : defaultValues ? t('save') : t('create')}
             </Button>
           </DialogFooter>
         </form>

@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { tx } from '@/i18n';
 
 // Empty PROXY_BASE → relative URLs (dashboard and form-proxy share the domain).
 const PROXY_BASE = '';
@@ -21,7 +22,7 @@ async function submitPublicForm(fields: Record<string, unknown>, captchaToken: s
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(err || 'Submission failed');
+    throw new Error(err || tx('Submission failed'));
   }
   return res.json();
 }
@@ -80,7 +81,7 @@ export default function PublicFormKennzahlen() {
     e.preventDefault();
     const token = readCaptchaToken();
     if (!token) {
-      setError('Bitte warte auf die Spam-Prüfung und versuche es erneut.');
+      setError(tx('Bitte warte auf die Spam-Prüfung und versuche es erneut.'));
       return;
     }
     setSubmitting(true);
@@ -89,7 +90,7 @@ export default function PublicFormKennzahlen() {
       await submitPublicForm(cleanFields(fields), token);
       setSubmitted(true);
     } catch (err: any) {
-      setError(err.message || 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      setError(err.message || tx('Etwas ist schiefgelaufen. Bitte versuche es erneut.'));
     } finally {
       setSubmitting(false);
     }
@@ -104,10 +105,10 @@ export default function PublicFormKennzahlen() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold">Vielen Dank!</h2>
-          <p className="text-muted-foreground">Deine Eingabe wurde erfolgreich übermittelt.</p>
+          <h2 className="text-xl font-bold">{tx('Vielen Dank!')}</h2>
+          <p className="text-muted-foreground">{tx('Deine Eingabe wurde erfolgreich übermittelt.')}</p>
           <Button variant="outline" className="mt-4" onClick={() => { setSubmitted(false); setFields({}); }}>
-            Weitere Eingabe
+            {tx('Weitere Eingabe')}
           </Button>
         </div>
       </div>
@@ -118,12 +119,12 @@ export default function PublicFormKennzahlen() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Kennzahlen — Formular</h1>
+          <h1 className="text-2xl font-bold text-foreground">{tx('Kennzahlen — Formular')}</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5 bg-card rounded-xl border border-border p-6 shadow-md">
           <div className="space-y-2">
-            <Label htmlFor="berichtsjahr">Berichtsjahr</Label>
+            <Label htmlFor="berichtsjahr">{tx('Berichtsjahr')}</Label>
             <Input
               id="berichtsjahr"
               type="number"
@@ -135,7 +136,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="standort">Standort / Werk</Label>
+            <Label htmlFor="standort">{tx('Standort / Werk')}</Label>
             <Input
               id="standort"
               placeholder=""
@@ -144,7 +145,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="gesamtmenge_kg">Gesamtmenge Verpackungen (kg/Jahr)</Label>
+            <Label htmlFor="gesamtmenge_kg">{tx('Gesamtmenge Verpackungen (kg/Jahr)')}</Label>
             <Input
               id="gesamtmenge_kg"
               type="number"
@@ -156,7 +157,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="menge_kunststoff_kg">Menge Kunststoff (kg/Jahr)</Label>
+            <Label htmlFor="menge_kunststoff_kg">{tx('Menge Kunststoff (kg/Jahr)')}</Label>
             <Input
               id="menge_kunststoff_kg"
               type="number"
@@ -168,7 +169,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="menge_papier_pappe_kg">Menge Papier/Pappe (kg/Jahr)</Label>
+            <Label htmlFor="menge_papier_pappe_kg">{tx('Menge Papier/Pappe (kg/Jahr)')}</Label>
             <Input
               id="menge_papier_pappe_kg"
               type="number"
@@ -180,7 +181,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="menge_glas_kg">Menge Glas (kg/Jahr)</Label>
+            <Label htmlFor="menge_glas_kg">{tx('Menge Glas (kg/Jahr)')}</Label>
             <Input
               id="menge_glas_kg"
               type="number"
@@ -192,7 +193,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="menge_metall_kg">Menge Metall (kg/Jahr)</Label>
+            <Label htmlFor="menge_metall_kg">{tx('Menge Metall (kg/Jahr)')}</Label>
             <Input
               id="menge_metall_kg"
               type="number"
@@ -204,7 +205,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="menge_verbund_kg">Menge Verbund (kg/Jahr)</Label>
+            <Label htmlFor="menge_verbund_kg">{tx('Menge Verbund (kg/Jahr)')}</Label>
             <Input
               id="menge_verbund_kg"
               type="number"
@@ -216,7 +217,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rezyklatanteil_gesamt_prozent">Rezyklatanteil gesamt (%)</Label>
+            <Label htmlFor="rezyklatanteil_gesamt_prozent">{tx('Rezyklatanteil gesamt (%)')}</Label>
             <Input
               id="rezyklatanteil_gesamt_prozent"
               type="number"
@@ -228,7 +229,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rezyklatanteil_kunststoff_prozent">Rezyklatanteil Kunststoff (%)</Label>
+            <Label htmlFor="rezyklatanteil_kunststoff_prozent">{tx('Rezyklatanteil Kunststoff (%)')}</Label>
             <Input
               id="rezyklatanteil_kunststoff_prozent"
               type="number"
@@ -240,7 +241,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rezyklatanteil_papier_prozent">Rezyklatanteil Papier/Pappe (%)</Label>
+            <Label htmlFor="rezyklatanteil_papier_prozent">{tx('Rezyklatanteil Papier/Pappe (%)')}</Label>
             <Input
               id="rezyklatanteil_papier_prozent"
               type="number"
@@ -252,7 +253,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rezyklatanteil_glas_prozent">Rezyklatanteil Glas (%)</Label>
+            <Label htmlFor="rezyklatanteil_glas_prozent">{tx('Rezyklatanteil Glas (%)')}</Label>
             <Input
               id="rezyklatanteil_glas_prozent"
               type="number"
@@ -264,7 +265,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rezyklatanteil_metall_prozent">Rezyklatanteil Metall (%)</Label>
+            <Label htmlFor="rezyklatanteil_metall_prozent">{tx('Rezyklatanteil Metall (%)')}</Label>
             <Input
               id="rezyklatanteil_metall_prozent"
               type="number"
@@ -276,7 +277,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="mehrwegquote_prozent">Mehrwegquote (%)</Label>
+            <Label htmlFor="mehrwegquote_prozent">{tx('Mehrwegquote (%)')}</Label>
             <Input
               id="mehrwegquote_prozent"
               type="number"
@@ -288,7 +289,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="recyclingfaehigkeitsquote_prozent">Anteil recyclingfähiger Verpackungen (%)</Label>
+            <Label htmlFor="recyclingfaehigkeitsquote_prozent">{tx('Anteil recyclingfähiger Verpackungen (%)')}</Label>
             <Input
               id="recyclingfaehigkeitsquote_prozent"
               type="number"
@@ -300,7 +301,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="anzahl_verpackungstypen">Anzahl Verpackungstypen gesamt</Label>
+            <Label htmlFor="anzahl_verpackungstypen">{tx('Anzahl Verpackungstypen gesamt')}</Label>
             <Input
               id="anzahl_verpackungstypen"
               type="number"
@@ -312,7 +313,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="anzahl_konform">Davon konform</Label>
+            <Label htmlFor="anzahl_konform">{tx('Davon konform')}</Label>
             <Input
               id="anzahl_konform"
               type="number"
@@ -324,7 +325,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="anzahl_kritisch">Davon kritisch</Label>
+            <Label htmlFor="anzahl_kritisch">{tx('Davon kritisch')}</Label>
             <Input
               id="anzahl_kritisch"
               type="number"
@@ -336,7 +337,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="anzahl_nicht_konform">Davon nicht konform</Label>
+            <Label htmlFor="anzahl_nicht_konform">{tx('Davon nicht konform')}</Label>
             <Input
               id="anzahl_nicht_konform"
               type="number"
@@ -348,7 +349,7 @@ export default function PublicFormKennzahlen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="kpi_hinweise">Hinweise / Anmerkungen</Label>
+            <Label htmlFor="kpi_hinweise">{tx('Hinweise / Anmerkungen')}</Label>
             <Textarea
               id="kpi_hinweise"
               placeholder=""
@@ -372,12 +373,12 @@ export default function PublicFormKennzahlen() {
           )}
 
           <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? 'Wird gesendet...' : 'Absenden'}
+            {submitting ? tx('Wird gesendet...') : tx('Absenden')}
           </Button>
         </form>
 
         <p className="text-xs text-muted-foreground text-center mt-4">
-          Powered by Klar
+          {tx('Powered by Klar')}
         </p>
       </div>
     </div>

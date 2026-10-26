@@ -1,0 +1,1080 @@
+# Scaffold key file contents — part 1/2.
+Same rule as .scaffold_context: these files are pre-generated; never Read the source files themselves.
+
+## src/types/app.ts
+```
+import { lookupLabel } from '@/i18n';
+
+// AUTOMATICALLY GENERATED TYPES - DO NOT EDIT
+
+export type LookupValue = { key: string; label: string };
+/** A raw record URL (applookup reference). NEVER render this directly
+ *  in JSX — it is a URL, not a display value. Show the enriched `*Name`
+ *  field or resolve it via the entity map instead. Assignable to/from
+ *  string everywhere; the `& {}` keeps the alias NAME visible in tsc
+ *  error messages (a plain primitive alias gets normalized away). */
+export type RecordUrl = string & {};
+export type GeoLocation = { lat: number; long: number; info?: string };
+
+export type AttachmentType = 'file' | 'note' | 'url' | 'json';
+export interface Attachment {
+  id: string;
+  type: AttachmentType;
+  label: string | null;
+  value: string | null;
+  active: boolean;
+  createdat?: string | null;
+  updatedat?: string | null;
+}
+
+export interface AttachmentInput {
+  type: AttachmentType;
+  label?: string;
+  value: string;
+  active?: boolean;
+}
+
+export interface Verpackungstypen {
+  record_id: string;
+  /** The API field. */
+  created_at: string;
+  updated_at: string | null;
+  /** Alias of created_at, filled by the read helpers. The API sends
+   *  snake_case only — reading `createdat` off a raw record yields
+   *  undefined, which type-checks and then crashes at runtime. */
+  createdat: string;
+  updatedat: string | null;
+  fields: {
+    unternehmen_ref?: RecordUrl; // applookup -> URL zu 'Unternehmen' Record
+    verpackungs_id?: string;
+    verpackungsname?: string;
+    beschreibung?: string;
+    produktkategorie?: string;
+    verwendungszweck?: LookupValue;
+    material_hauptkategorie?: LookupValue;
+    materialzusammensetzung?: string;
+    material_einzelmaterialien?: string;
+    material_prozentsaetze?: string;
+    material_gewichte_g?: string;
+    laenge_mm?: number;
+    breite_mm?: number;
+    hoehe_mm?: number;
+    wandstaerke_mm?: number;
+    volumen_ml?: number;
+    gesamtgewicht_g?: number;
+    rezyklat_postconsumer_prozent?: number;
+    rezyklat_postconsumer_kg_jahr?: number;
+    rezyklat_postindustrial_prozent?: number;
+    rezyklat_postindustrial_kg_jahr?: number;
+    recyclingfaehigkeit_kategorie?: LookupValue;
+    recyclingfaehigkeit_score?: number;
+    recyclingfaehigkeit_referenz?: string;
+    mehrwegfaehig?: boolean;
+    erwartete_umlaeufe?: number;
+    ruecknahmesystem?: string;
+    ppwr_quoten_zuordnung?: LookupValue[];
+    kennzeichnung_vollstaendig?: boolean;
+    kennzeichnung_hinweise?: string;
+  };
+}
+
+export interface Unternehmen {
+  record_id: string;
+  /** The API field. */
+  created_at: string;
+  updated_at: string | null;
+  /** Alias of created_at, filled by the read helpers. The API sends
+   *  snake_case only — reading `createdat` off a raw record yields
+   *  undefined, which type-checks and then crashes at runtime. */
+  createdat: string;
+  updatedat: string | null;
+  fields: {
+    firmenname?: string;
+    strasse?: string;
+    hausnummer?: string;
+    plz?: string;
+    ort?: string;
+    laender?: string;
+    ansprechpartner_vorname?: string;
+    ansprechpartner_nachname?: string;
+    ansprechpartner_email?: string;
+    ansprechpartner_telefon?: string;
+    steuernummer?: string;
+    epr_registrierungsnummern?: string;
+    verantwortlich_vorname?: string;
+    verantwortlich_nachname?: string;
+    verantwortlich_funktion?: string;
+    verantwortlich_email?: string;
+  };
+}
+
+export interface Regelstatus {
+  record_id: string;
+  /** The API field. */
+  created_at: string;
+  updated_at: string | null;
+  /** Alias of created_at, filled by the read helpers. The API sends
+   *  snake_case only — reading `createdat` off a raw record yields
+   *  undefined, which type-checks and then crashes at runtime. */
+  createdat: string;
+  updatedat: string | null;
+  fields: {
+    verpackungstyp_status_ref?: RecordUrl; // applookup -> URL zu 'Verpackungstypen' Record
+    konformitaetsstatus?: LookupValue;
+    datanluecke_flag?: boolean;
+    problemfelder?: LookupValue[];
+    status_kommentar?: string;
+    bewertungsdatum?: string; // Format: YYYY-MM-DD oder ISO String
+    bewerter_vorname?: string;
+    bewerter_nachname?: string;
+    bewerter_abteilung?: string;
+  };
+}
+
+export interface Nachweise {
+  record_id: string;
+  /** The API field. */
+  created_at: string;
+  updated_at: string | null;
+  /** Alias of created_at, filled by the read helpers. The API sends
+   *  snake_case only — reading `createdat` off a raw record yields
+   *  undefined, which type-checks and then crashes at runtime. */
+  createdat: string;
+  updatedat: string | null;
+  fields: {
+    verpackungstyp_ref?: RecordUrl; // applookup -> URL zu 'Verpackungstypen' Record
+    dokumentart?: LookupValue;
+    aussteller?: string;
+    dokument_url?: string;
+    ausstellungsdatum?: string; // Format: YYYY-MM-DD oder ISO String
+    gueltig_bis?: string; // Format: YYYY-MM-DD oder ISO String
+    dokument_datei?: string;
+    nachweis_hinweise?: string;
+  };
+}
+
+export interface Kennzahlen {
+  record_id: string;
+  /** The API field. */
+  created_at: string;
+  updated_at: string | null;
+  /** Alias of created_at, filled by the read helpers. The API sends
+   *  snake_case only — reading `createdat` off a raw record yields
+   *  undefined, which type-checks and then crashes at runtime. */
+  createdat: string;
+  updatedat: string | null;
+  fields: {
+    unternehmen_kpi_ref?: RecordUrl; // applookup -> URL zu 'Unternehmen' Record
+    berichtsjahr?: number;
+    standort?: string;
+    gesamtmenge_kg?: number;
+    menge_kunststoff_kg?: number;
+    menge_papier_pappe_kg?: number;
+    menge_glas_kg?: number;
+    menge_metall_kg?: number;
+    menge_verbund_kg?: number;
+    rezyklatanteil_gesamt_prozent?: number;
+    rezyklatanteil_kunststoff_prozent?: number;
+    rezyklatanteil_papier_prozent?: number;
+    rezyklatanteil_glas_prozent?: number;
+    rezyklatanteil_metall_prozent?: number;
+    mehrwegquote_prozent?: number;
+    recyclingfaehigkeitsquote_prozent?: number;
+    anzahl_verpackungstypen?: number;
+    anzahl_konform?: number;
+    anzahl_kritisch?: number;
+    anzahl_nicht_konform?: number;
+    kpi_hinweise?: string;
+  };
+}
+
+export const APP_IDS = {
+  VERPACKUNGSTYPEN: '69ce2a16a11c5c94e64a8724',
+  UNTERNEHMEN: '69ce2a10b74844016addd82e',
+  REGELSTATUS: '69ce2a18409773a38eb18808',
+  NACHWEISE: '69ce2a186fb9551311abbd7f',
+  KENNZAHLEN: '69ce2a19555564c40eccb02c',
+} as const;
+
+
+export const LOOKUP_OPTIONS: Record<string, Record<string, {key: string, label: string}[]>> = {
+  'verpackungstypen': {
+    verwendungszweck: [{ key: "verkaufsverpackung", get label() { return lookupLabel('verpackungstypen', 'verwendungszweck', "verkaufsverpackung") ?? "Verkaufsverpackung"; } }, { key: "versandverpackung", get label() { return lookupLabel('verpackungstypen', 'verwendungszweck', "versandverpackung") ?? "Versandverpackung"; } }, { key: "transportverpackung", get label() { return lookupLabel('verpackungstypen', 'verwendungszweck', "transportverpackung") ?? "Transportverpackung"; } }, { key: "serviceverpackung", get label() { return lookupLabel('verpackungstypen', 'verwendungszweck', "serviceverpackung") ?? "Serviceverpackung"; } }],
+    material_hauptkategorie: [{ key: "kunststoff", get label() { return lookupLabel('verpackungstypen', 'material_hauptkategorie', "kunststoff") ?? "Kunststoff"; } }, { key: "papier_pappe", get label() { return lookupLabel('verpackungstypen', 'material_hauptkategorie', "papier_pappe") ?? "Papier/Pappe"; } }, { key: "glas", get label() { return lookupLabel('verpackungstypen', 'material_hauptkategorie', "glas") ?? "Glas"; } }, { key: "metall", get label() { return lookupLabel('verpackungstypen', 'material_hauptkategorie', "metall") ?? "Metall"; } }, { key: "verbund", get label() { return lookupLabel('verpackungstypen', 'material_hauptkategorie', "verbund") ?? "Verbund"; } }, { key: "sonstiges", get label() { return lookupLabel('verpackungstypen', 'material_hauptkategorie', "sonstiges") ?? "Sonstiges"; } }],
+    recyclingfaehigkeit_kategorie: [{ key: "gut_recyclingfaehig", get label() { return lookupLabel('verpackungstypen', 'recyclingfaehigkeit_kategorie', "gut_recyclingfaehig") ?? "Gut recyclingfähig"; } }, { key: "eingeschraenkt_recyclingfaehig", get label() { return lookupLabel('verpackungstypen', 'recyclingfaehigkeit_kategorie', "eingeschraenkt_recyclingfaehig") ?? "Eingeschränkt recyclingfähig"; } }, { key: "nicht_recyclingfaehig", get label() { return lookupLabel('verpackungstypen', 'recyclingfaehigkeit_kategorie', "nicht_recyclingfaehig") ?? "Nicht recyclingfähig"; } }, { key: "nicht_bewertet", get label() { return lookupLabel('verpackungstypen', 'recyclingfaehigkeit_kategorie', "nicht_bewertet") ?? "Nicht bewertet"; } }],
+    ppwr_quoten_zuordnung: [{ key: "rezyklatquote", get label() { return lookupLabel('verpackungstypen', 'ppwr_quoten_zuordnung', "rezyklatquote") ?? "Rezyklatquote"; } }, { key: "mehrwegquote", get label() { return lookupLabel('verpackungstypen', 'ppwr_quoten_zuordnung', "mehrwegquote") ?? "Mehrwegquote"; } }, { key: "recyclingfaehigkeitsquote", get label() { return lookupLabel('verpackungstypen', 'ppwr_quoten_zuordnung', "recyclingfaehigkeitsquote") ?? "Recyclingfähigkeitsquote"; } }],
+  },
+  'regelstatus': {
+    konformitaetsstatus: [{ key: "konform", get label() { return lookupLabel('regelstatus', 'konformitaetsstatus', "konform") ?? "Konform"; } }, { key: "kritisch", get label() { return lookupLabel('regelstatus', 'konformitaetsstatus', "kritisch") ?? "Kritisch"; } }, { key: "nicht_konform", get label() { return lookupLabel('regelstatus', 'konformitaetsstatus', "nicht_konform") ?? "Nicht konform"; } }],
+    problemfelder: [{ key: "rezyklatquote_zu_niedrig", get label() { return lookupLabel('regelstatus', 'problemfelder', "rezyklatquote_zu_niedrig") ?? "Rezyklatquote zu niedrig"; } }, { key: "nicht_recyclingfaehig", get label() { return lookupLabel('regelstatus', 'problemfelder', "nicht_recyclingfaehig") ?? "Nicht recyclingfähig"; } }, { key: "kennzeichnung_unvollstaendig", get label() { return lookupLabel('regelstatus', 'problemfelder', "kennzeichnung_unvollstaendig") ?? "Kennzeichnung unvollständig"; } }, { key: "mehrwegpflicht_verletzt", get label() { return lookupLabel('regelstatus', 'problemfelder', "mehrwegpflicht_verletzt") ?? "Mehrwegpflicht verletzt (Einwegverpackung)"; } }, { key: "datanluecke", get label() { return lookupLabel('regelstatus', 'problemfelder', "datanluecke") ?? "Datenlücke"; } }, { key: "sonstiges", get label() { return lookupLabel('regelstatus', 'problemfelder', "sonstiges") ?? "Sonstiges"; } }],
+  },
+  'nachweise': {
+    dokumentart: [{ key: "pruefbericht", get label() { return lookupLabel('nachweise', 'dokumentart', "pruefbericht") ?? "Prüfbericht"; } }, { key: "zertifikat", get label() { return lookupLabel('nachweise', 'dokumentart', "zertifikat") ?? "Zertifikat"; } }, { key: "laboranalyse", get label() { return lookupLabel('nachweise', 'dokumentart', "laboranalyse") ?? "Laboranalyse"; } }, { key: "gutachten", get label() { return lookupLabel('nachweise', 'dokumentart', "gutachten") ?? "Gutachten"; } }, { key: "sonstiges", get label() { return lookupLabel('nachweise', 'dokumentart', "sonstiges") ?? "Sonstiges"; } }],
+  },
+};
+
+// Optimistic LookupValue writes: never re-type a label — resolve the schema
+// option instead (its label is a locale-aware getter; falls back to the key).
+// WRONG: status: { key: 'offen', label: 'Offen' }   (frozen in one language)
+// RIGHT: status: lookupOption('<appKey>', 'status', 'offen')
+export function lookupOption(app: string, field: string, key: string): LookupValue {
+  return LOOKUP_OPTIONS[app]?.[field]?.find(o => o.key === key) ?? { key, label: key };
+}
+
+export const FIELD_TYPES: Record<string, Record<string, string>> = {
+  'verpackungstypen': {
+    'unternehmen_ref': 'applookup/select',
+    'verpackungs_id': 'string/text',
+    'verpackungsname': 'string/text',
+    'beschreibung': 'string/textarea',
+    'produktkategorie': 'string/text',
+    'verwendungszweck': 'lookup/select',
+    'material_hauptkategorie': 'lookup/select',
+    'materialzusammensetzung': 'string/textarea',
+    'material_einzelmaterialien': 'string/text',
+    'material_prozentsaetze': 'string/text',
+    'material_gewichte_g': 'string/text',
+    'laenge_mm': 'number',
+    'breite_mm': 'number',
+    'hoehe_mm': 'number',
+    'wandstaerke_mm': 'number',
+    'volumen_ml': 'number',
+    'gesamtgewicht_g': 'number',
+    'rezyklat_postconsumer_prozent': 'number',
+    'rezyklat_postconsumer_kg_jahr': 'number',
+    'rezyklat_postindustrial_prozent': 'number',
+    'rezyklat_postindustrial_kg_jahr': 'number',
+    'recyclingfaehigkeit_kategorie': 'lookup/select',
+    'recyclingfaehigkeit_score': 'number',
+    'recyclingfaehigkeit_referenz': 'string/text',
+    'mehrwegfaehig': 'bool',
+    'erwartete_umlaeufe': 'number',
+    'ruecknahmesystem': 'string/textarea',
+    'ppwr_quoten_zuordnung': 'multiplelookup/checkbox',
+    'kennzeichnung_vollstaendig': 'bool',
+    'kennzeichnung_hinweise': 'string/textarea',
+  },
+  'unternehmen': {
+    'firmenname': 'string/text',
+    'strasse': 'string/text',
+    'hausnummer': 'string/text',
+    'plz': 'string/text',
+    'ort': 'string/text',
+    'laender': 'string/text',
+    'ansprechpartner_vorname': 'string/text',
+    'ansprechpartner_nachname': 'string/text',
+    'ansprechpartner_email': 'string/email',
+    'ansprechpartner_telefon': 'string/tel',
+    'steuernummer': 'string/text',
+    'epr_registrierungsnummern': 'string/textarea',
+    'verantwortlich_vorname': 'string/text',
+    'verantwortlich_nachname': 'string/text',
+    'verantwortlich_funktion': 'string/text',
+    'verantwortlich_email': 'string/email',
+  },
+  'regelstatus': {
+    'verpackungstyp_status_ref': 'applookup/select',
+    'konformitaetsstatus': 'lookup/radio',
+    'datanluecke_flag': 'bool',
+    'problemfelder': 'multiplelookup/checkbox',
+    'status_kommentar': 'string/textarea',
+    'bewertungsdatum': 'date/date',
+    'bewerter_vorname': 'string/text',
+    'bewerter_nachname': 'string/text',
+    'bewerter_abteilung': 'string/text',
+  },
+  'nachweise': {
+    'verpackungstyp_ref': 'applookup/select',
+    'dokumentart': 'lookup/select',
+    'aussteller': 'string/text',
+    'dokument_url': 'string/url',
+    'ausstellungsdatum': 'date/date',
+    'gueltig_bis': 'date/date',
+    'dokument_datei': 'file',
+    'nachweis_hinweise': 'string/textarea',
+  },
+  'kennzahlen': {
+    'unternehmen_kpi_ref': 'applookup/select',
+    'berichtsjahr': 'number',
+    'standort': 'string/text',
+    'gesamtmenge_kg': 'number',
+    'menge_kunststoff_kg': 'number',
+    'menge_papier_pappe_kg': 'number',
+    'menge_glas_kg': 'number',
+    'menge_metall_kg': 'number',
+    'menge_verbund_kg': 'number',
+    'rezyklatanteil_gesamt_prozent': 'number',
+    'rezyklatanteil_kunststoff_prozent': 'number',
+    'rezyklatanteil_papier_prozent': 'number',
+    'rezyklatanteil_glas_prozent': 'number',
+    'rezyklatanteil_metall_prozent': 'number',
+    'mehrwegquote_prozent': 'number',
+    'recyclingfaehigkeitsquote_prozent': 'number',
+    'anzahl_verpackungstypen': 'number',
+    'anzahl_konform': 'number',
+    'anzahl_kritisch': 'number',
+    'anzahl_nicht_konform': 'number',
+    'kpi_hinweise': 'string/textarea',
+  },
+};
+
+export const HUB_TOPOLOGY: Record<string, { field: string; entity: string }[]> = {
+};
+
+type StripLookup<T> = {
+  [K in keyof T]: T[K] extends LookupValue | undefined ? string | LookupValue | undefined
+    : T[K] extends LookupValue[] | undefined ? string[] | LookupValue[] | undefined
+    : T[K];
+};
+
+// Helper Types for creating new records (lookup fields as plain strings for API)
+export type CreateVerpackungstypen = StripLookup<Verpackungstypen['fields']>;
+export type CreateUnternehmen = StripLookup<Unternehmen['fields']>;
+export type CreateRegelstatus = StripLookup<Regelstatus['fields']>;
+export type CreateNachweise = StripLookup<Nachweise['fields']>;
+export type CreateKennzahlen = StripLookup<Kennzahlen['fields']>;
+```
+
+## src/services/livingAppsService.ts
+```
+// AUTOMATICALLY GENERATED SERVICE
+import { APP_IDS, LOOKUP_OPTIONS, FIELD_TYPES } from '@/types/app';
+import { ensureUploadableImage } from '@/lib/ai';
+import { REST_URL, restFetch } from '@/lib/origin';
+import type { Verpackungstypen, Unternehmen, Regelstatus, Nachweise, Kennzahlen, CreateVerpackungstypen, CreateUnternehmen, CreateRegelstatus, CreateNachweise, CreateKennzahlen } from '@/types/app';
+
+// Base Configuration — the host is a RUNTIME fact (lib/origin.ts):
+// a bundle copied to another LA instance must talk to THAT instance.
+const API_BASE_URL = REST_URL;
+
+// --- HELPER FUNCTIONS ---
+export function extractRecordId(url: unknown): string | null {
+  if (!url) return null;
+  if (typeof url !== 'string') return null;
+  const match = url.match(/([a-f0-9]{24})$/i);
+  return match ? match[1] : null;
+}
+
+// multipleapplookup form-state is Array<URL>. The MultiCombobox picker
+// works on record-ids; this helper maps a raw form value (which may be
+// undefined, null, a single URL string from a legacy single-Combobox
+// render, or the expected URL array) to a clean string[] of ids.
+export function extractRecordIds(urls: unknown): string[] {
+  if (!urls) return [];
+  const arr = Array.isArray(urls) ? urls : [urls];
+  const out: string[] = [];
+  for (const u of arr) {
+    const id = extractRecordId(u);
+    if (id) out.push(id);
+  }
+  return out;
+}
+
+export function createRecordUrl(appId: string, recordId: string): string {
+  return `${API_BASE_URL}/apps/${appId}/records/${recordId}`;
+}
+
+export class LivingAppsApiError extends Error {
+  status: number;
+  type?: string;
+  /** Stable error type identifier — the last path segment of `type`
+   *  (v1: `…/rest/v1/docs/errors/<id>`, e.g. `no_app_permission`). */
+  code?: string;
+  control_identifier?: string;
+  control_type?: string;
+  field_type?: string;
+  detail?: string;
+  constructor(message: string, status: number, raw?: Record<string, unknown>) {
+    super(message);
+    this.name = 'LivingAppsApiError';
+    this.status = status;
+    if (raw) {
+      this.type = typeof raw.type === 'string' ? raw.type : undefined;
+      this.code = this.type ? this.type.replace(/\/+$/, '').split('/').pop() : undefined;
+      this.control_identifier = typeof raw.control_identifier === 'string' ? raw.control_identifier : undefined;
+      this.control_type = typeof raw.control_type === 'string' ? raw.control_type : undefined;
+      this.field_type = typeof raw.field_type === 'string' ? raw.field_type : undefined;
+      this.detail = typeof raw.detail === 'string' ? raw.detail : undefined;
+    }
+  }
+}
+
+async function parseErrorBody(response: Response): Promise<{ message: string; raw?: Record<string, unknown> }> {
+  const text = await response.text();
+  if (!text) return { message: `HTTP ${response.status}` };
+  try {
+    const raw = JSON.parse(text);
+    if (raw && typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>;
+      const message = typeof obj.detail === 'string' ? obj.detail
+        : typeof obj.title === 'string' ? obj.title
+        : text;
+      return { message, raw: obj };
+    }
+  } catch { /* fall through to text */ }
+  return { message: text };
+}
+
+export interface CallApiOptions {
+  /** Skip errorbus dispatch for expected failures (e.g. optional-param 404s). */
+  silent?: boolean;
+  /** Abort the request (a keystroke replacing the previous search). */
+  signal?: AbortSignal;
+}
+
+/** Query options of GET /apps/{id}/records — filter/orderby are vSQL (see the journey layer's
+ *  buildSearchFilter; never concatenate user input into them yourself). */
+export interface RecordQuery {
+  filter?: string;
+  orderby?: string[];
+  limit?: number;
+  offset?: number;
+  /** Field projection (`field=` repeated). The record's `fields` then holds ONLY these keys. */
+  fields?: string[];
+  signal?: AbortSignal;
+}
+// URLSearchParams encodes spaces as `+` — the API accepts it (verified live
+// 2026-09-02: orderby=r.v_nachname+asc → 200, sorted; filter with + → 200).
+export function recordQueryString(q: RecordQuery): string {
+  const p = new URLSearchParams();
+  if (q.filter) p.set('filter', q.filter);
+  for (const o of q.orderby ?? []) p.append('orderby', o);
+  for (const f of q.fields ?? []) p.append('field', f);
+  if (q.limit !== undefined) p.set('limit', String(Math.max(1, Math.floor(q.limit))));
+  if (q.offset !== undefined) p.set('offset', String(Math.max(0, Math.floor(q.offset))));
+  const s = p.toString();
+  return s ? `?${s}` : '';
+}
+/** `[[n]]` from aggregate_records?value=count() -> n; `[]` -> 0; anything else -> 0 (never NaN). */
+export function parseAggregateCount(data: unknown): number {
+  if (!Array.isArray(data)) return 0;
+  if (data.length === 0) return 0;
+  const first = data[0];
+  const n = Array.isArray(first) ? Number(first[0]) : Number(first);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** What the create and update helpers resolve to. Same `record_id`
+ *  the read helpers expose, so the whole family behaves alike — the
+ *  raw REST answer only
+ *  carries `id`, and code that guessed (e.g. Object.keys(res)[0]) built
+ *  `/records/id` and got a 400 on the next write. */
+export interface MutationResult {
+  record_id: string;
+  id: string;
+  fields: Record<string, any>;
+  [key: string]: any;
+}
+
+async function callApi(method: string, endpoint: string, data?: any, options?: CallApiOptions) {
+  const silent = options?.silent === true;
+  let response: Response;
+  try {
+    response = await restFetch(`${API_BASE_URL}${endpoint}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',  // Nutze Session Cookies für Auth
+      signal: options?.signal,
+      body: data ? JSON.stringify(data) : undefined
+    });
+  } catch (netErr) {
+    // A search the user typed past is cancelled, not broken — it must not
+    // raise an error toast on its way out.
+    if (netErr instanceof Error && netErr.name === 'AbortError') throw netErr;
+    const message = netErr instanceof Error ? netErr.message : String(netErr);
+    if (!silent) {
+      window.dispatchEvent(new CustomEvent('errorbus:emit', { detail: {
+        source: 'network', message, status: 0,
+      } }));
+    }
+    throw netErr;
+  }
+  if (!response.ok) {
+    // 401 = not signed in → the login screen, never the errorbus (repair can't fix auth).
+    // 403 = signed in, but this list is not theirs to read or write: a notice,
+    // the page stays (05.10.2026 — it used to say „not logged in“ and blank everything).
+    const isAuthError = response.status === 401;
+    if (isAuthError) window.dispatchEvent(new Event('auth-error'));
+    const { message, raw } = await parseErrorBody(response);
+    const err = new LivingAppsApiError(message, response.status, raw);
+    if (!silent && !isAuthError) {
+      window.dispatchEvent(new CustomEvent('errorbus:emit', { detail: {
+        source: 'api',
+        status: err.status,
+        type: err.type,
+        control_identifier: err.control_identifier,
+        control_type: err.control_type,
+        field_type: err.field_type,
+        detail: err.detail,
+        message: err.message,
+      } }));
+    }
+    throw err;
+  }
+  // DELETE returns often empty body or simple status
+  if (method === 'DELETE') return true;
+  return response.json();
+}
+
+/** Upload a file to LivingApps. Returns the file URL for use in record fields. */
+export async function uploadFile(file: File | Blob, filename?: string): Promise<string> {
+  // HEIC/HEIF (iPhone photos) crash the server-side image decoder (500).
+  // Convert to JPEG in the browser BEFORE upload — every upload path routes
+  // through here, so this one guard covers form fields AND attachments.
+  if (file instanceof File) file = await ensureUploadableImage(file);
+  const formData = new FormData();
+  formData.append('file', file, filename ?? (file instanceof File ? file.name : 'upload'));
+  const res = await restFetch(`${API_BASE_URL}/files`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  });
+  if (!res.ok) {
+    if (res.status === 401) window.dispatchEvent(new Event('auth-error'));
+    else if (res.status === 403) window.dispatchEvent(new CustomEvent('errorbus:emit', { detail: {
+      source: 'api', status: 403, message: 'File upload failed: 403',
+    } }));
+    throw new Error(`File upload failed: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.url;
+}
+
+// --- ATTACHMENT API ---
+// Record-attachments: file/note/url/json blobs attached to a single record.
+// `getAttachments` returns a dict keyed by attachment id; we flatten to an array.
+export async function getRecordAttachments(appId: string, recordId: string) {
+  const data = await callApi('GET', `/apps/${appId}/records/${recordId}/attachments`, undefined, { silent: true }).catch(() => ({}));
+  if (!data || typeof data !== 'object') return [] as import('@/types/app').Attachment[];
+  return Object.entries(data).map(([id, att]) => ({ id, ...(att as Record<string, unknown>) })) as import('@/types/app').Attachment[];
+}
+
+export async function createRecordAttachment(appId: string, recordId: string, input: import('@/types/app').AttachmentInput) {
+  return callApi('POST', `/apps/${appId}/records/${recordId}/attachments`, input) as Promise<import('@/types/app').Attachment>;
+}
+
+export async function updateRecordAttachment(appId: string, recordId: string, attachmentId: string, input: Partial<import('@/types/app').AttachmentInput>) {
+  return callApi('PATCH', `/apps/${appId}/records/${recordId}/attachments/${attachmentId}`, input) as Promise<import('@/types/app').Attachment>;
+}
+
+export async function deleteRecordAttachment(appId: string, recordId: string, attachmentId: string) {
+  return callApi('DELETE', `/apps/${appId}/records/${recordId}/attachments/${attachmentId}`);
+}
+
+function enrichLookupFields<T extends { fields: Record<string, unknown> }>(
+  records: T[], entityKey: string
+): T[] {
+  const opts = LOOKUP_OPTIONS[entityKey];
+  if (!opts) return records;
+  return records.map(r => {
+    const fields = { ...r.fields };
+    for (const [fieldKey, options] of Object.entries(opts)) {
+      const val = fields[fieldKey];
+      if (typeof val === 'string') {
+        const m = options.find(o => o.key === val);
+        fields[fieldKey] = m ?? { key: val, label: val };
+      } else if (Array.isArray(val)) {
+        fields[fieldKey] = val.map(v => {
+          if (typeof v === 'string') {
+            const m = options.find(o => o.key === v);
+            return m ?? { key: v, label: v };
+          }
+          return v;
+        });
+      }
+    }
+    return { ...r, fields } as T;
+  });
+}
+
+/** A textarea that HOLDS A LIST but was typed on one line.
+ *
+ *  Rendering such a field as tiles/bullets is the natural thing to do, and
+ *  the natural way to write it is `value.split('\n')` — one item per line
+ *  is the convention every form implies. Owners type differently though:
+ *  a live landing page collapsed five services into ONE tile because the
+ *  record held 'Tagesbetreuung, Übernachtung, …' without a single line
+ *  break. Normalizing HERE makes that natural split correct whatever was
+ *  typed, instead of asking every page to re-derive the heuristic.
+ *
+ *  Deliberately conservative — prose must survive untouched:
+ *    · already has line breaks  → left alone (the author's own structure)
+ *    · ; • · |                  → unambiguous separators, 2 parts suffice
+ *    · commas                   → only with 3+ parts that all read like
+ *                                 labels: short, at most four words, no
+ *                                 sentence punctuation. A prose clause like
+ *                                 "Katzen und Kleintiere aller Rassen" is
+ *                                 short enough but not wordy-short.
+ *  Anything else stays as it is, so a wrong guess degrades to today's
+ *  behaviour (one item), never to mangled prose. */
+const LIST_LABEL_MAX = 40;
+const LIST_LABEL_MAX_WORDS = 4;
+function listTextToLines(text: string): string {
+  if (!text || /\r?\n/.test(text)) return text;
+  const bulleted = text.split(/\s*[;•·|]\s*/).map(s => s.trim()).filter(Boolean);
+  if (bulleted.length >= 2) return bulleted.join('\n');
+  const parts = text.split(/\s*,\s*/).map(s => s.trim()).filter(Boolean);
+  const looksLikeLabels = parts.length >= 3 && parts.every(p =>
+    p.length <= LIST_LABEL_MAX
+    && p.split(/\s+/).length <= LIST_LABEL_MAX_WORDS
+    && !/[.!?:]$/.test(p));
+  return looksLikeLabels ? parts.join('\n') : text;
+}
+
+function normalizeListTextareas<T extends { fields: Record<string, unknown> }>(
+  records: T[], entityKey: string
+): T[] {
+  const types = FIELD_TYPES[entityKey];
+  if (!types) return records;
+  const areas = Object.keys(types).filter(k => types[k] === 'string/textarea');
+  if (areas.length === 0) return records;
+  return records.map(r => {
+    let touched = false;
+    const fields = { ...r.fields };
+    for (const key of areas) {
+      const val = fields[key];
+      if (typeof val !== 'string') continue;
+      const next = listTextToLines(val);
+      if (next !== val) { fields[key] = next; touched = true; }
+    }
+    return touched ? ({ ...r, fields } as T) : r;
+  });
+}
+
+/** The one post-processing step every READ goes through: lookup objects
+ *  attached, list-ish textareas line-broken. Read helpers call this, not
+ *  the individual passes. */
+function hydrateRecords<T extends { fields: Record<string, unknown> }>(
+  records: T[], entityKey: string
+): T[] {
+  return normalizeListTextareas(enrichLookupFields(records, entityKey), entityKey);
+}
+
+/** Normalize fields for API writes: strip lookup objects to keys, fix date formats. */
+export function cleanFieldsForApi(
+  fields: Record<string, unknown>,
+  entityKey: string
+): Record<string, unknown> {
+  const clean: Record<string, unknown> = { ...fields };
+  // Strip virtual / unknown keys before they hit the API. Sub-agent invents
+  // computed-only keys (e.g. `_netto`, `_bestellung_gesamtbetrag`) for the
+  // 'Berechnungen' display, and a leaky submit-backfill would otherwise send
+  // them to the Living-Apps backend which rejects with 'field does not exist'.
+  const known = FIELD_TYPES[entityKey];
+  if (known) {
+    for (const k of Object.keys(clean)) {
+      if (!(k in known)) delete clean[k];
+    }
+  }
+  for (const [k, v] of Object.entries(clean)) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && 'key' in v) clean[k] = (v as any).key;
+    if (Array.isArray(v)) clean[k] = v.map((item: any) => item && typeof item === 'object' && 'key' in item ? item.key : item);
+  }
+  const types = FIELD_TYPES[entityKey];
+  if (types) {
+    for (const [k, ft] of Object.entries(types)) {
+      if (!(k in clean)) continue;
+      const val = clean[k];
+      // applookup fields: undefined → null (clear single reference)
+      if ((ft === 'applookup/select' || ft === 'applookup/choice') && val === undefined) { clean[k] = null; continue; }
+      // multipleapplookup fields: undefined/null → [] (clear multi reference)
+      if ((ft === 'multipleapplookup/select' || ft === 'multipleapplookup/choice') && (val === undefined || val === null)) { clean[k] = []; continue; }
+      // lookup fields: undefined → null (clear single lookup)
+      if ((ft.startsWith('lookup/')) && val === undefined) { clean[k] = null; continue; }
+      // multiplelookup fields: undefined/null → [] (clear multi lookup)
+      if ((ft.startsWith('multiplelookup/')) && (val === undefined || val === null)) { clean[k] = []; continue; }
+      if (typeof val !== 'string' || !val) continue;
+      if (ft === 'date/datetimeminute') clean[k] = val.slice(0, 16);
+      else if (ft === 'date/date') clean[k] = val.slice(0, 10);
+    }
+  }
+  return clean;
+}
+
+let _cachedUserProfile: Record<string, unknown> | null = null;
+
+export async function getUserProfile(): Promise<Record<string, unknown>> {
+  if (_cachedUserProfile) return _cachedUserProfile;
+  const raw = await callApi('GET', '/user');
+  const skip = new Set(['id', 'image', 'lang', 'gender', 'title', 'fax', 'menus', 'initials']);
+  const data: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (v != null && !skip.has(k)) data[k] = v;
+  }
+  _cachedUserProfile = data;
+  return data;
+}
+
+export interface HeaderProfile {
+  firstname: string;
+  surname: string;
+  email: string;
+  image: string | null;
+  company: string | null;
+}
+
+let _cachedHeaderProfile: HeaderProfile | null = null;
+
+export async function getHeaderProfile(): Promise<HeaderProfile> {
+  if (_cachedHeaderProfile) return _cachedHeaderProfile;
+  const raw = await callApi('GET', '/user');
+  _cachedHeaderProfile = {
+    firstname: raw.firstname ?? '',
+    surname: raw.surname ?? '',
+    email: raw.email ?? '',
+    image: raw.image ?? null,
+    company: raw.company ?? null,
+  };
+  return _cachedHeaderProfile;
+}
+
+export interface AppGroupInfo {
+  id: string;
+  name: string;
+  image: string | null;
+  createdat: string;
+  /** Resolved link: /objects/{id}/ if the dashboard exists, otherwise /gateway/apps/{firstAppId}?template=list_page */
+  href: string;
+}
+
+let _cachedAppGroups: AppGroupInfo[] | null = null;
+
+export async function getAppGroups(): Promise<AppGroupInfo[]> {
+  if (_cachedAppGroups) return _cachedAppGroups;
+  const raw = await callApi('GET', '/appgroups?with=apps');
+  const groups: AppGroupInfo[] = Object.values(raw)
+    .map((g: any) => {
+      const firstAppId = Object.keys(g.apps ?? {})[0] ?? g.id;
+      return {
+        id: g.id,
+        name: g.name,
+        image: g.image ?? null,
+        // API field is created_at (snake_case) — the old camelCase read
+        // left every group '', silently disabling the newest-first sort.
+        createdat: g.created_at ?? g.createdat ?? '',
+        href: `/gateway/apps/${firstAppId}?template=list_page`,
+        _firstAppId: firstAppId,
+      };
+    })
+    .sort((a, b) => b.createdat.localeCompare(a.createdat));
+
+  // Check which appgroups have a deployed dashboard via app params
+  const paramChecks = await Promise.allSettled(
+    groups.map(g => callApi('GET', `/apps/${(g as any)._firstAppId}/params/la_page_header_additional_url`, undefined, { silent: true }))
+  );
+  paramChecks.forEach((result, i) => {
+    if (result.status !== 'fulfilled' || !result.value) return;
+    const url = result.value.value;
+    if (typeof url === 'string' && url.length > 0) {
+      try { groups[i].href = new URL(url).pathname; } catch { groups[i].href = url; }
+    }
+  });
+
+  // Clean up internal helper property
+  groups.forEach(g => delete (g as any)._firstAppId);
+
+  _cachedAppGroups = groups;
+  return _cachedAppGroups;
+}
+
+export class LivingAppsService {
+  // --- VERPACKUNGSTYPEN ---
+  static async getVerpackungstypen(): Promise<Verpackungstypen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records`);
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Verpackungstypen[];
+    return hydrateRecords(records, 'verpackungstypen');
+  }
+  static async queryVerpackungstypen(q: RecordQuery = {}): Promise<Verpackungstypen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records${recordQueryString(q)}`, undefined, { signal: q.signal });
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Verpackungstypen[];
+    return hydrateRecords(records, 'verpackungstypen');
+  }
+  static async countVerpackungstypen(filter?: string, signal?: AbortSignal): Promise<number> {
+    const data = await callApi('GET', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/aggregate_records${recordQueryString({ filter })}${filter ? '&' : '?'}value=count()`, undefined, { signal, silent: true });
+    return parseAggregateCount(data);
+  }
+  static async getVerpackungstypenEntry(id: string): Promise<Verpackungstypen | undefined> {
+    const data = await callApi('GET', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records/${id}`);
+    const record = { record_id: data.id, ...data, createdat: data.created_at ?? '', updatedat: data.updated_at ?? null } as Verpackungstypen;
+    return hydrateRecords([record], 'verpackungstypen')[0];
+  }
+  static async createVerpackungstypenEntry(fields: CreateVerpackungstypen): Promise<MutationResult> {
+    const data = await callApi('POST', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records`, { fields: cleanFieldsForApi(fields as any, 'verpackungstypen') });
+    return { ...data, record_id: data.id };
+  }
+  static async updateVerpackungstypenEntry(id: string, fields: Partial<CreateVerpackungstypen>): Promise<MutationResult> {
+    const data = await callApi('PATCH', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'verpackungstypen') });
+    return { ...data, record_id: data.id };
+  }
+  static async deleteVerpackungstypenEntry(id: string) {
+    return callApi('DELETE', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records/${id}`);
+  }
+
+  // --- UNTERNEHMEN ---
+  static async getUnternehmen(): Promise<Unternehmen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.UNTERNEHMEN}/records`);
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Unternehmen[];
+    return hydrateRecords(records, 'unternehmen');
+  }
+  static async queryUnternehmen(q: RecordQuery = {}): Promise<Unternehmen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.UNTERNEHMEN}/records${recordQueryString(q)}`, undefined, { signal: q.signal });
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Unternehmen[];
+    return hydrateRecords(records, 'unternehmen');
+  }
+  static async countUnternehmen(filter?: string, signal?: AbortSignal): Promise<number> {
+    const data = await callApi('GET', `/apps/${APP_IDS.UNTERNEHMEN}/aggregate_records${recordQueryString({ filter })}${filter ? '&' : '?'}value=count()`, undefined, { signal, silent: true });
+    return parseAggregateCount(data);
+  }
+  static async getUnternehmenEntry(id: string): Promise<Unternehmen | undefined> {
+    const data = await callApi('GET', `/apps/${APP_IDS.UNTERNEHMEN}/records/${id}`);
+    const record = { record_id: data.id, ...data, createdat: data.created_at ?? '', updatedat: data.updated_at ?? null } as Unternehmen;
+    return hydrateRecords([record], 'unternehmen')[0];
+  }
+  static async createUnternehmenEntry(fields: CreateUnternehmen): Promise<MutationResult> {
+    const data = await callApi('POST', `/apps/${APP_IDS.UNTERNEHMEN}/records`, { fields: cleanFieldsForApi(fields as any, 'unternehmen') });
+    return { ...data, record_id: data.id };
+  }
+  static async updateUnternehmenEntry(id: string, fields: Partial<CreateUnternehmen>): Promise<MutationResult> {
+    const data = await callApi('PATCH', `/apps/${APP_IDS.UNTERNEHMEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'unternehmen') });
+    return { ...data, record_id: data.id };
+  }
+  static async deleteUnternehmenEntry(id: string) {
+    return callApi('DELETE', `/apps/${APP_IDS.UNTERNEHMEN}/records/${id}`);
+  }
+
+  // --- REGELSTATUS ---
+  static async getRegelstatus(): Promise<Regelstatus[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.REGELSTATUS}/records`);
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Regelstatus[];
+    return hydrateRecords(records, 'regelstatus');
+  }
+  static async queryRegelstatus(q: RecordQuery = {}): Promise<Regelstatus[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.REGELSTATUS}/records${recordQueryString(q)}`, undefined, { signal: q.signal });
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Regelstatus[];
+    return hydrateRecords(records, 'regelstatus');
+  }
+  static async countRegelstatus(filter?: string, signal?: AbortSignal): Promise<number> {
+    const data = await callApi('GET', `/apps/${APP_IDS.REGELSTATUS}/aggregate_records${recordQueryString({ filter })}${filter ? '&' : '?'}value=count()`, undefined, { signal, silent: true });
+    return parseAggregateCount(data);
+  }
+  static async getRegelstatu(id: string): Promise<Regelstatus | undefined> {
+    const data = await callApi('GET', `/apps/${APP_IDS.REGELSTATUS}/records/${id}`);
+    const record = { record_id: data.id, ...data, createdat: data.created_at ?? '', updatedat: data.updated_at ?? null } as Regelstatus;
+    return hydrateRecords([record], 'regelstatus')[0];
+  }
+  static async createRegelstatu(fields: CreateRegelstatus): Promise<MutationResult> {
+    const data = await callApi('POST', `/apps/${APP_IDS.REGELSTATUS}/records`, { fields: cleanFieldsForApi(fields as any, 'regelstatus') });
+    return { ...data, record_id: data.id };
+  }
+  static async updateRegelstatu(id: string, fields: Partial<CreateRegelstatus>): Promise<MutationResult> {
+    const data = await callApi('PATCH', `/apps/${APP_IDS.REGELSTATUS}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'regelstatus') });
+    return { ...data, record_id: data.id };
+  }
+  static async deleteRegelstatu(id: string) {
+    return callApi('DELETE', `/apps/${APP_IDS.REGELSTATUS}/records/${id}`);
+  }
+
+  // --- NACHWEISE ---
+  static async getNachweise(): Promise<Nachweise[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.NACHWEISE}/records`);
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Nachweise[];
+    return hydrateRecords(records, 'nachweise');
+  }
+  static async queryNachweise(q: RecordQuery = {}): Promise<Nachweise[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.NACHWEISE}/records${recordQueryString(q)}`, undefined, { signal: q.signal });
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Nachweise[];
+    return hydrateRecords(records, 'nachweise');
+  }
+  static async countNachweise(filter?: string, signal?: AbortSignal): Promise<number> {
+    const data = await callApi('GET', `/apps/${APP_IDS.NACHWEISE}/aggregate_records${recordQueryString({ filter })}${filter ? '&' : '?'}value=count()`, undefined, { signal, silent: true });
+    return parseAggregateCount(data);
+  }
+  static async getNachweiseEntry(id: string): Promise<Nachweise | undefined> {
+    const data = await callApi('GET', `/apps/${APP_IDS.NACHWEISE}/records/${id}`);
+    const record = { record_id: data.id, ...data, createdat: data.created_at ?? '', updatedat: data.updated_at ?? null } as Nachweise;
+    return hydrateRecords([record], 'nachweise')[0];
+  }
+  static async createNachweiseEntry(fields: CreateNachweise): Promise<MutationResult> {
+    const data = await callApi('POST', `/apps/${APP_IDS.NACHWEISE}/records`, { fields: cleanFieldsForApi(fields as any, 'nachweise') });
+    return { ...data, record_id: data.id };
+  }
+  static async updateNachweiseEntry(id: string, fields: Partial<CreateNachweise>): Promise<MutationResult> {
+    const data = await callApi('PATCH', `/apps/${APP_IDS.NACHWEISE}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'nachweise') });
+    return { ...data, record_id: data.id };
+  }
+  static async deleteNachweiseEntry(id: string) {
+    return callApi('DELETE', `/apps/${APP_IDS.NACHWEISE}/records/${id}`);
+  }
+
+  // --- KENNZAHLEN ---
+  static async getKennzahlen(): Promise<Kennzahlen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/records`);
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Kennzahlen[];
+    return hydrateRecords(records, 'kennzahlen');
+  }
+  static async queryKennzahlen(q: RecordQuery = {}): Promise<Kennzahlen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/records${recordQueryString(q)}`, undefined, { signal: q.signal });
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Kennzahlen[];
+    return hydrateRecords(records, 'kennzahlen');
+  }
+  static async countKennzahlen(filter?: string, signal?: AbortSignal): Promise<number> {
+    const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/aggregate_records${recordQueryString({ filter })}${filter ? '&' : '?'}value=count()`, undefined, { signal, silent: true });
+    return parseAggregateCount(data);
+  }
+  static async getKennzahlenEntry(id: string): Promise<Kennzahlen | undefined> {
+    const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`);
+    const record = { record_id: data.id, ...data, createdat: data.created_at ?? '', updatedat: data.updated_at ?? null } as Kennzahlen;
+    return hydrateRecords([record], 'kennzahlen')[0];
+  }
+  static async createKennzahlenEntry(fields: CreateKennzahlen): Promise<MutationResult> {
+    const data = await callApi('POST', `/apps/${APP_IDS.KENNZAHLEN}/records`, { fields: cleanFieldsForApi(fields as any, 'kennzahlen') });
+    return { ...data, record_id: data.id };
+  }
+  static async updateKennzahlenEntry(id: string, fields: Partial<CreateKennzahlen>): Promise<MutationResult> {
+    const data = await callApi('PATCH', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'kennzahlen') });
+    return { ...data, record_id: data.id };
+  }
+  static async deleteKennzahlenEntry(id: string) {
+    return callApi('DELETE', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`);
+  }
+
+}
+```
+
+## src/App.tsx
+```
+import '@/lib/sentry';
+import '@/lib/stale-bundle';
+import { Fragment, lazy, Suspense, useEffect, useState } from 'react';
+import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { locale, onLocaleChange, syncProfileLocale, t } from '@/i18n';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorBusProvider } from '@/components/ErrorBus';
+import { Layout } from '@/components/Layout';
+import DashboardOverview from '@/pages/DashboardOverview';
+import PublicPagesAdmin from '@/pages/PublicPagesAdmin';
+import PublicPageFields from '@/pages/PublicPageFields';
+import IntentFields from '@/pages/IntentFields';
+import { IntentPolicyLoader } from '@/components/IntentPolicyLoader';
+import IntentsAdmin from '@/pages/IntentsAdmin';
+import AppMap from '@/pages/AppMap';
+// <custom:imports>
+import VerpackungErfassenPage from '@/pages/intents/VerpackungErfassenPage';
+import JahresberichtErfassenPage from '@/pages/intents/JahresberichtErfassenPage';
+// </custom:imports>
+
+// Lazy: public pages live outside <Layout> and only load on /#/public/:slug —
+// dashboard users never pay for them, anonymous visitors skip the dashboard.
+const PublicPage = lazy(() => import('@/pages/public/PublicPage'));
+
+function RouteNotFound() {
+  const { pathname } = useLocation();
+  return (
+    <div className="max-w-xl mx-auto mt-16 rounded-[27px] bg-card shadow-lg p-8 space-y-3" role="alert">
+      <h1 className="text-xl font-semibold tracking-tight">{t('nf_title')}</h1>
+      <p className="text-sm text-muted-foreground break-all">{t('nf_message', { path: pathname })}</p>
+      <a href="#/" className="inline-flex text-sm font-medium text-primary hover:underline">{t('nf_back')}</a>
+    </div>
+  );
+}
+
+// Language switch = full remount below the router: every t()/label lookup
+// re-evaluates, the la-* widgets re-read <html lang>. Sits inside HashRouter
+// so the current route survives (it re-reads the URL hash).
+function LocaleGate({ children }: { children: React.ReactNode }) {
+  // The i18n layer notifies for locale CHANGES and for catalog/overlay
+  // ARRIVALS (same locale, new data). `setCurrent(locale)` bailed out on
+  // the arrivals — when locales/pages.json lost the race against the first
+  // paint, the page stayed frozen in the build language until the next
+  // locale switch. A generation counter accepts every notification; the
+  // key must include it because `children` is the same element object on
+  // every gate render (React would bail out without the remount).
+  const [gen, setGen] = useState(0);
+  useEffect(() => onLocaleChange(() => setGen((g) => g + 1)), []);
+  // Adopt the LA profile language (SSOT) — but never on public routes,
+  // where the visitor's browser language governs (initPublicLocale).
+  useEffect(() => {
+    if (!window.location.hash.startsWith('#/public')) void syncProfileLocale();
+  }, []);
+  return <Fragment key={`${locale}:${gen}`}>{children}</Fragment>;
+}
+
+const APPGROUP_ID = '69ce2a3c47d849aae2c65b3c';
+
+// The assistant (chat + Werkzeuge + code viewer) is platform chrome:
+// <la-klar-assistant>, loaded via /actions-agent/embed/embed.js (appended
+// dynamically in index.html). Own shadow DOM, own styling. Mounted OUTSIDE
+// LocaleGate on purpose — its keyed remounts (locale switch, catalog
+// arrival) must not tear the element down mid-chat; the element follows
+// <html lang> itself. Hidden on anonymous public routes; its 401 guard is
+// the backstop, not the mechanism.
+function AssistantMount() {
+  const location = useLocation();
+  if (location.pathname.startsWith('/public')) return null;
+  return <la-klar-assistant appgroup-id={APPGROUP_ID} />;
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <ErrorBusProvider>
+        <HashRouter>
+            <AssistantMount />
+            <IntentPolicyLoader />
+            <LocaleGate>
+            <Routes>
+              <Route path="public/:slug" element={<Suspense fallback={null}><PublicPage /></Suspense>} />
+              <Route element={<Layout />}>
+                <Route index element={<DashboardOverview />} />
+                <Route path="verwaltung/ablaeufe" element={<IntentsAdmin />} />
+                <Route path="verwaltung/anwendung" element={<AppMap />} />
+                <Route path="verwaltung/ablaeufe/:slug/felder" element={<IntentFields />} />
+                <Route path="verwaltung/oeffentliche-seiten" element={<PublicPagesAdmin />} />
+                <Route path="verwaltung/oeffentliche-seiten/:slug/felder" element={<PublicPageFields />} />
+                {/* <custom:routes> */}
+              <Route path="intents/verpackung-erfassen" element={<VerpackungErfassenPage />} />
+              <Route path="intents/jahresbericht-erfassen" element={<JahresberichtErfassenPage />} />
+            {/* </custom:routes> */}
+                {/* An unknown hash (a bookmark from before a rebuild renamed the
+                    flows, a mistyped link) must not be a blank page. */}
+                <Route path="*" element={<RouteNotFound />} />
+              </Route>
+            </Routes>
+            </LocaleGate>
+        </HashRouter>
+      </ErrorBusProvider>
+    </ErrorBoundary>
+  );
+}
+
+```

@@ -1,3 +1,18 @@
+/**
+ * KennzahlenDialog — pre-generated create/edit dialog for Kennzahlen.
+ *
+ * Props: open, onClose, onSubmit(fields) => Promise<void>, defaultValues?,
+ * recordId? (pass when EDITING — enables the attachments section),
+ * unternehmenList (full hook array — resolves the Unternehmen applookup),
+ * enablePhotoScan?, enablePhotoLocation?.
+ *
+ * defaultValues is SHAPE-TOLERANT and its prop type is the EXPORTED
+ * KennzahlenDialogDefaults — NOT the entity field type: lookup fields accept
+ * the bare KEY string (or LookupValue), applookup fields the bare record id
+ * (or record URL); the dialog normalizes. Type prefill STATE with the export:
+ *  ❌ useState<Partial<Kennzahlen['fields']>>({ … })   // LookupValue fields reject string prefills (TS2322)
+ *  ✓ useState<KennzahlenDialogDefaults | undefined>(undefined)
+ */
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { Kennzahlen, Unternehmen } from '@/types/app';
 import { APP_IDS } from '@/types/app';
@@ -13,18 +28,26 @@ import type { ComputedContext } from '@/config/form-enhancements/types';
 import { applyFieldOrder, flattenFieldOrder, applyDefaults, evalComputed, numberInputProps, clampNumberValue, classifyComputed, extractApplookupRefs, mergeApplookupRefs, resolveApplookupRef } from '@/config/form-enhancements/types';
 import { formEnhancements, computedDeps, computedApplookupRefs } from '@/config/form-enhancements/Kennzahlen';
 import { AttachmentsSection } from '@/components/AttachmentsSection';
+import { requiredMessage } from '@/lib/journey/messages';
+import { t, appLabel, fieldLabel, lookupLabel, localeTag, CURRENCY } from '@/i18n';
 import { Textarea } from '@/components/ui/textarea';
 import { Combobox } from '@/components/Combobox';
 import { UnternehmenDialog } from '@/components/dialogs/UnternehmenDialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { IconCamera, IconChevronDown, IconCircleCheck, IconClipboard, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
+import { IconAlertCircle, IconCamera, IconChevronDown, IconCircleCheck, IconClipboard, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
 import { fileToDataUri, extractFromInput, extractPhotoMeta, reverseGeocode } from '@/lib/ai';
+
+/** Widened prefill type for KennzahlenDialog.defaultValues — see file header. */
+export type KennzahlenDialogDefaults = Kennzahlen['fields'];
 
 interface KennzahlenDialogProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (fields: Kennzahlen['fields']) => Promise<void>;
-  defaultValues?: Kennzahlen['fields'];
+  /** SHAPE-TOLERANT: lookup fields accept the bare key (string) or the
+   *  LookupValue object; applookup fields the bare record id or the full
+   *  record URL — the dialog normalizes both. */
+  defaultValues?: KennzahlenDialogDefaults;
   /** Record id when editing — enables the attachments section. Omit on create. */
   recordId?: string;
   unternehmenList: Unternehmen[];
@@ -32,20 +55,40 @@ interface KennzahlenDialogProps {
   enablePhotoLocation?: boolean;
 }
 
+// defaultValues are SHAPE-TOLERANT: the dialog resolves bare lookup keys via
+// its own options and bare record ids via the field's target app — consumers
+// never carry the LookupValue/record-URL shape in their head.
+const NORMALIZE_APPLOOKUPS: Record<string, string> = {
+  unternehmen_kpi_ref: APP_IDS.UNTERNEHMEN,
+};
+function normalizeDefaults(values: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...values };
+  for (const [k, appId] of Object.entries(NORMALIZE_APPLOOKUPS)) {
+    const v = out[k];
+    if (typeof v === 'string' && v !== '' && !v.startsWith('http')) out[k] = createRecordUrl(appId, v);
+    else if (Array.isArray(v)) out[k] = v.map(x => (typeof x === 'string' && x !== '' && !x.startsWith('http') ? createRecordUrl(appId, x) : x));
+  }
+  return out;
+}
+
 export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recordId, unternehmenList, enablePhotoScan = true, enablePhotoLocation = true }: KennzahlenDialogProps) {
   const [fields, setFields] = useState<Partial<Kennzahlen['fields']>>({});
   const [saving, setSaving] = useState(false);
+  const normalizedDefaults = useMemo<Record<string, unknown> | undefined>(
+    () => (defaultValues ? normalizeDefaults(defaultValues as Record<string, unknown>) : undefined),
+    [defaultValues],
+  );
   // Dirty-tracking: in edit-mode the Speichern button is disabled until the
   // user actually changes something. JSON.stringify is good enough for our
   // fields (plain values + LookupValue objects + string arrays).
   const isDirty = useMemo(() => {
-    if (!defaultValues) return true;  // create-mode: always allow submit
+    if (!normalizedDefaults) return true;  // create-mode: always allow submit
     try {
-      return JSON.stringify(fields) !== JSON.stringify(defaultValues);
+      return JSON.stringify(fields) !== JSON.stringify(normalizedDefaults);
     } catch {
       return true;
     }
-  }, [fields, defaultValues]);
+  }, [fields, normalizedDefaults]);
   // Inline-Create state for "Unternehmen" target. The dropdown's
   // "+ Neuer …" option opens a sub-dialog; on submit we POST, add the new
   // record to the local `extraUnternehmen` list, and select it in
@@ -63,6 +106,14 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     setCreateUnternehmenInitial(q);
     setCreateUnternehmenOpen(true);
   }
+  // Fields the plan assigns to a tool (empty without a plan).
+  const SYSTEM_ASSIGNED: string[] = [];
+  const [showErrors, setShowErrors] = useState(false);
+  const REQUIRED_FIELDS = ['unternehmen_kpi_ref', 'berichtsjahr'] as const;
+  const missingRequired = REQUIRED_FIELDS.filter(k => {
+    const v = (fields as Record<string, unknown>)[k];
+    return v == null || v === '' || (Array.isArray(v) && v.length === 0);
+  });
   const [aiOpen, setAiOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
@@ -113,12 +164,13 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
 
   useEffect(() => {
     if (open) {
-      setFields(applyDefaults((defaultValues ?? {}) as Record<string, unknown>, formEnhancements.defaults) as Partial<Kennzahlen['fields']>);
+      setFields(applyDefaults(normalizedDefaults ?? {}, formEnhancements.defaults) as Partial<Kennzahlen['fields']>);
       setPreview(null);
       setScanSuccess(false);
       setAiText('');
+      setSubmitError(null);
     }
-  }, [open, defaultValues]);
+  }, [open, normalizedDefaults]);
   useEffect(() => {
     try { localStorage.setItem('ai-use-personal-info', String(usePersonalInfo)); } catch {}
   }, [usePersonalInfo]);
@@ -136,9 +188,20 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     }
   }
 
+  // Submit errors surface IN the dialog (it is modal — a banner in the page
+  // body would be hidden behind it). A consumer onSubmit that THROWS (the
+  // documented "throw to prevent closing" validation pattern) lands here:
+  // the dialog stays open, nothing is saved, the message is visible.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (missingRequired.length > 0) {
+      setShowErrors(true);
+      return;
+    }
     setSaving(true);
+    setSubmitError(null);
     try {
       // Fill empty number slots from computed values; user-typed values always win.
       // CRITICAL: only backend-mapped keys may be backfilled. Virtual computeds
@@ -157,6 +220,8 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
       const clean = cleanFieldsForApi(merged, 'kennzahlen');
       await onSubmit(clean as Kennzahlen['fields']);
       onClose();
+    } catch (err) {
+      setSubmitError(err instanceof Error && err.message ? err.message : t('submit_error'));
     } finally {
       setSaving(false);
     }
@@ -228,7 +293,7 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
       setScanSuccess(true);
       setTimeout(() => setScanSuccess(false), 3000);
     } catch (err) {
-      console.error('Scan fehlgeschlagen:', err);
+      console.error(`${t('scan_error')}:`, err);
       alert(err instanceof Error ? err.message : String(err));
     } finally {
       setScanning(false);
@@ -263,12 +328,14 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     }
   }, []);
 
-  const DIALOG_INTENT = defaultValues ? 'Kennzahlen bearbeiten' : 'Kennzahlen hinzufügen';
+  const DIALOG_INTENT = defaultValues
+    ? t('edit_entity', { entity: appLabel('kennzahlen') })
+    : t('new_entity', { entity: appLabel('kennzahlen') });
 
   const fieldBlocks: Record<string, React.ReactNode> = {
     'unternehmen_kpi_ref': (
       <div key="unternehmen_kpi_ref" className="space-y-1.5">
-        <Label htmlFor="unternehmen_kpi_ref">Unternehmen</Label>
+        <Label htmlFor="unternehmen_kpi_ref">{fieldLabel('kennzahlen', 'unternehmen_kpi_ref')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Combobox
           id="unternehmen_kpi_ref"
           placeholder=""
@@ -278,30 +345,35 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
           }))}
           value={extractRecordId(fields.unternehmen_kpi_ref)}
           onChange={id => setFields(f => ({ ...f, unternehmen_kpi_ref: id ? createRecordUrl(APP_IDS.UNTERNEHMEN, id) : undefined }))}
-          searchPlaceholder="Suchen…"
-          emptyText="Kein Treffer"
           onCreateNew={(q) => openCreateUnternehmen("unternehmen_kpi_ref", q)}
-          createLabel="Neu in Unternehmen"
+          createLabel={t('create_in', { entity: appLabel('unternehmen') })}
         />
+        {showErrors && !fields.unternehmen_kpi_ref && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('kennzahlen', 'unternehmen_kpi_ref')}</p>
+        )}
       </div>
     ),
     'berichtsjahr': (
       <div key="berichtsjahr" className="space-y-1.5">
-        <Label htmlFor="berichtsjahr">Berichtsjahr</Label>
+        <Label htmlFor="berichtsjahr">{fieldLabel('kennzahlen', 'berichtsjahr')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="berichtsjahr"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'berichtsjahr')}
           placeholder=""
           value={fields.berichtsjahr !== undefined ? fields.berichtsjahr : (computedValues['berichtsjahr'] ?? '')}
           onChange={e => setFields(f => ({ ...f, berichtsjahr: clampNumberValue(formEnhancements, 'berichtsjahr', e.target.value) }))}
         />
+        {showErrors && !fields.berichtsjahr && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('kennzahlen', 'berichtsjahr')}</p>
+        )}
       </div>
     ),
     'standort': (
       <div key="standort" className="space-y-1.5">
-        <Label htmlFor="standort">Standort / Werk</Label>
+        <Label htmlFor="standort">{fieldLabel('kennzahlen', 'standort')}</Label>
         <Input
           id="standort"
           placeholder=""
@@ -312,10 +384,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'gesamtmenge_kg': (
       <div key="gesamtmenge_kg" className="space-y-1.5">
-        <Label htmlFor="gesamtmenge_kg">Gesamtmenge Verpackungen (kg/Jahr)</Label>
+        <Label htmlFor="gesamtmenge_kg">{fieldLabel('kennzahlen', 'gesamtmenge_kg')}</Label>
         <Input
           id="gesamtmenge_kg"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'gesamtmenge_kg')}
           placeholder=""
@@ -326,10 +399,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'menge_kunststoff_kg': (
       <div key="menge_kunststoff_kg" className="space-y-1.5">
-        <Label htmlFor="menge_kunststoff_kg">Menge Kunststoff (kg/Jahr)</Label>
+        <Label htmlFor="menge_kunststoff_kg">{fieldLabel('kennzahlen', 'menge_kunststoff_kg')}</Label>
         <Input
           id="menge_kunststoff_kg"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'menge_kunststoff_kg')}
           placeholder=""
@@ -340,10 +414,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'menge_papier_pappe_kg': (
       <div key="menge_papier_pappe_kg" className="space-y-1.5">
-        <Label htmlFor="menge_papier_pappe_kg">Menge Papier/Pappe (kg/Jahr)</Label>
+        <Label htmlFor="menge_papier_pappe_kg">{fieldLabel('kennzahlen', 'menge_papier_pappe_kg')}</Label>
         <Input
           id="menge_papier_pappe_kg"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'menge_papier_pappe_kg')}
           placeholder=""
@@ -354,10 +429,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'menge_glas_kg': (
       <div key="menge_glas_kg" className="space-y-1.5">
-        <Label htmlFor="menge_glas_kg">Menge Glas (kg/Jahr)</Label>
+        <Label htmlFor="menge_glas_kg">{fieldLabel('kennzahlen', 'menge_glas_kg')}</Label>
         <Input
           id="menge_glas_kg"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'menge_glas_kg')}
           placeholder=""
@@ -368,10 +444,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'menge_metall_kg': (
       <div key="menge_metall_kg" className="space-y-1.5">
-        <Label htmlFor="menge_metall_kg">Menge Metall (kg/Jahr)</Label>
+        <Label htmlFor="menge_metall_kg">{fieldLabel('kennzahlen', 'menge_metall_kg')}</Label>
         <Input
           id="menge_metall_kg"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'menge_metall_kg')}
           placeholder=""
@@ -382,10 +459,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'menge_verbund_kg': (
       <div key="menge_verbund_kg" className="space-y-1.5">
-        <Label htmlFor="menge_verbund_kg">Menge Verbund (kg/Jahr)</Label>
+        <Label htmlFor="menge_verbund_kg">{fieldLabel('kennzahlen', 'menge_verbund_kg')}</Label>
         <Input
           id="menge_verbund_kg"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'menge_verbund_kg')}
           placeholder=""
@@ -396,10 +474,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'rezyklatanteil_gesamt_prozent': (
       <div key="rezyklatanteil_gesamt_prozent" className="space-y-1.5">
-        <Label htmlFor="rezyklatanteil_gesamt_prozent">Rezyklatanteil gesamt (%)</Label>
+        <Label htmlFor="rezyklatanteil_gesamt_prozent">{fieldLabel('kennzahlen', 'rezyklatanteil_gesamt_prozent')}</Label>
         <Input
           id="rezyklatanteil_gesamt_prozent"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'rezyklatanteil_gesamt_prozent')}
           placeholder=""
@@ -410,10 +489,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'rezyklatanteil_kunststoff_prozent': (
       <div key="rezyklatanteil_kunststoff_prozent" className="space-y-1.5">
-        <Label htmlFor="rezyklatanteil_kunststoff_prozent">Rezyklatanteil Kunststoff (%)</Label>
+        <Label htmlFor="rezyklatanteil_kunststoff_prozent">{fieldLabel('kennzahlen', 'rezyklatanteil_kunststoff_prozent')}</Label>
         <Input
           id="rezyklatanteil_kunststoff_prozent"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'rezyklatanteil_kunststoff_prozent')}
           placeholder=""
@@ -424,10 +504,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'rezyklatanteil_papier_prozent': (
       <div key="rezyklatanteil_papier_prozent" className="space-y-1.5">
-        <Label htmlFor="rezyklatanteil_papier_prozent">Rezyklatanteil Papier/Pappe (%)</Label>
+        <Label htmlFor="rezyklatanteil_papier_prozent">{fieldLabel('kennzahlen', 'rezyklatanteil_papier_prozent')}</Label>
         <Input
           id="rezyklatanteil_papier_prozent"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'rezyklatanteil_papier_prozent')}
           placeholder=""
@@ -438,10 +519,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'rezyklatanteil_glas_prozent': (
       <div key="rezyklatanteil_glas_prozent" className="space-y-1.5">
-        <Label htmlFor="rezyklatanteil_glas_prozent">Rezyklatanteil Glas (%)</Label>
+        <Label htmlFor="rezyklatanteil_glas_prozent">{fieldLabel('kennzahlen', 'rezyklatanteil_glas_prozent')}</Label>
         <Input
           id="rezyklatanteil_glas_prozent"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'rezyklatanteil_glas_prozent')}
           placeholder=""
@@ -452,10 +534,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'rezyklatanteil_metall_prozent': (
       <div key="rezyklatanteil_metall_prozent" className="space-y-1.5">
-        <Label htmlFor="rezyklatanteil_metall_prozent">Rezyklatanteil Metall (%)</Label>
+        <Label htmlFor="rezyklatanteil_metall_prozent">{fieldLabel('kennzahlen', 'rezyklatanteil_metall_prozent')}</Label>
         <Input
           id="rezyklatanteil_metall_prozent"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'rezyklatanteil_metall_prozent')}
           placeholder=""
@@ -466,10 +549,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'mehrwegquote_prozent': (
       <div key="mehrwegquote_prozent" className="space-y-1.5">
-        <Label htmlFor="mehrwegquote_prozent">Mehrwegquote (%)</Label>
+        <Label htmlFor="mehrwegquote_prozent">{fieldLabel('kennzahlen', 'mehrwegquote_prozent')}</Label>
         <Input
           id="mehrwegquote_prozent"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'mehrwegquote_prozent')}
           placeholder=""
@@ -480,10 +564,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'recyclingfaehigkeitsquote_prozent': (
       <div key="recyclingfaehigkeitsquote_prozent" className="space-y-1.5">
-        <Label htmlFor="recyclingfaehigkeitsquote_prozent">Anteil recyclingfähiger Verpackungen (%)</Label>
+        <Label htmlFor="recyclingfaehigkeitsquote_prozent">{fieldLabel('kennzahlen', 'recyclingfaehigkeitsquote_prozent')}</Label>
         <Input
           id="recyclingfaehigkeitsquote_prozent"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'recyclingfaehigkeitsquote_prozent')}
           placeholder=""
@@ -494,10 +579,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'anzahl_verpackungstypen': (
       <div key="anzahl_verpackungstypen" className="space-y-1.5">
-        <Label htmlFor="anzahl_verpackungstypen">Anzahl Verpackungstypen gesamt</Label>
+        <Label htmlFor="anzahl_verpackungstypen">{fieldLabel('kennzahlen', 'anzahl_verpackungstypen')}</Label>
         <Input
           id="anzahl_verpackungstypen"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'anzahl_verpackungstypen')}
           placeholder=""
@@ -508,10 +594,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'anzahl_konform': (
       <div key="anzahl_konform" className="space-y-1.5">
-        <Label htmlFor="anzahl_konform">Davon konform</Label>
+        <Label htmlFor="anzahl_konform">{fieldLabel('kennzahlen', 'anzahl_konform')}</Label>
         <Input
           id="anzahl_konform"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'anzahl_konform')}
           placeholder=""
@@ -522,10 +609,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'anzahl_kritisch': (
       <div key="anzahl_kritisch" className="space-y-1.5">
-        <Label htmlFor="anzahl_kritisch">Davon kritisch</Label>
+        <Label htmlFor="anzahl_kritisch">{fieldLabel('kennzahlen', 'anzahl_kritisch')}</Label>
         <Input
           id="anzahl_kritisch"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'anzahl_kritisch')}
           placeholder=""
@@ -536,10 +624,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'anzahl_nicht_konform': (
       <div key="anzahl_nicht_konform" className="space-y-1.5">
-        <Label htmlFor="anzahl_nicht_konform">Davon nicht konform</Label>
+        <Label htmlFor="anzahl_nicht_konform">{fieldLabel('kennzahlen', 'anzahl_nicht_konform')}</Label>
         <Input
           id="anzahl_nicht_konform"
           type="number"
+          inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'anzahl_nicht_konform')}
           placeholder=""
@@ -550,7 +639,7 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     ),
     'kpi_hinweise': (
       <div key="kpi_hinweise" className="space-y-1.5">
-        <Label htmlFor="kpi_hinweise">Hinweise / Anmerkungen</Label>
+        <Label htmlFor="kpi_hinweise">{fieldLabel('kennzahlen', 'kpi_hinweise')}</Label>
         <Textarea
           id="kpi_hinweise"
           placeholder=""
@@ -629,15 +718,15 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
     // Backend-Feld mit €-Label ODER virtueller Computed-Key, dessen Name nach Geld aussieht.
     const looksLikeCurrency = CURRENCY_KEYS.has(k) || /(?:kosten|preis|betrag|gesamt|netto|brutto|summe|mwst|rabatt|anzahlung|umsatz|saldo)/i.test(k);
     if (looksLikeCurrency) {
-      return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return n.toLocaleString(localeTag(), { style: 'currency', currency: CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
-    return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+    return n.toLocaleString(localeTag(), { maximumFractionDigits: 2 });
   }
 
   return (
     <>
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0">
+      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0 max-sm:[&>button]:size-10 max-sm:[&>button]:grid max-sm:[&>button]:place-items-center max-sm:[&>button]:rounded-full max-sm:[&>button]:border max-sm:[&>button]:border-input max-sm:[&>button]:bg-background max-sm:[&>button]:opacity-100 max-sm:[&>button>svg]:size-5">
         <DialogHeader className="px-6 pt-5 pb-3 border-b flex flex-row items-center gap-3 space-y-0">
           <DialogTitle className="flex-1 truncate text-left">{DIALOG_INTENT}</DialogTitle>
           {enablePhotoScan && (
@@ -646,21 +735,21 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
               onClick={() => setAiOpen(o => !o)}
               aria-expanded={aiOpen}
               aria-controls="ai-fill-panel"
-              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all mr-7 shadow-sm ${
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 max-sm:py-2.5 max-sm:px-4 text-xs font-semibold transition-all mr-7 max-sm:mr-12 shadow-sm ${
                 aiOpen
                   ? 'bg-primary text-primary-foreground ring-2 ring-primary/30'
                   : 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/15 hover:border-primary/50'
               }`}
             >
               <IconSparkles className={`h-3.5 w-3.5 ${aiOpen ? '' : 'text-primary'}`} />
-              <span className="hidden sm:inline">KI-Ausfüllen</span>
+              <span className="hidden sm:inline">{t('smart_fill')}</span>
               <IconChevronDown className={`h-3 w-3 transition-transform ${aiOpen ? 'rotate-180' : ''}`} />
             </button>
           )}
         </DialogHeader>
         {enablePhotoScan && aiOpen && (
           <div id="ai-fill-panel" className="border-b bg-muted/20 px-6 py-4 space-y-3">
-            <p className="text-xs text-muted-foreground">Versteht Fotos, Dokumente und Text und füllt alles für dich aus</p>
+            <p className="text-xs text-muted-foreground">{t('scan_header_sub')}</p>
             <div className="flex items-start gap-2 pl-0.5">
               <Checkbox
                 id="ai-use-personal-info"
@@ -670,21 +759,21 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
               />
               <span className="text-xs text-muted-foreground leading-snug">
                 <Label htmlFor="ai-use-personal-info" className="text-xs font-normal text-muted-foreground cursor-pointer inline">
-                  KI-Assistent darf zusätzlich Informationen zu meiner Person verwenden
+                  {t('useinfo_label')}
                 </Label>
                 {' '}
                 <button type="button" onClick={handleShowProfileInfo} className="text-xs text-primary hover:underline whitespace-nowrap">
-                  {profileLoading ? 'Lade...' : '(mehr Infos)'}
+                  {profileLoading ? t('useinfo_loading') : `(${t('useinfo_more')})`}
                 </button>
               </span>
             </div>
             {showProfileInfo && (
               <div className="rounded-md border bg-muted/50 p-2 text-xs max-h-40 overflow-y-auto">
-                <p className="font-medium mb-1">Folgende Infos über dich können von der KI genutzt werden:</p>
+                <p className="font-medium mb-1">{t('profile_preamble')}</p>
                 {profileData ? Object.values(profileData).map((v, i) => (
                   <span key={i}>{i > 0 && ", "}{typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
                 )) : (
-                  <span className="text-muted-foreground">Profil konnte nicht geladen werden</span>
+                  <span className="text-muted-foreground">{t('useinfo_error')}</span>
                 )}
               </div>
             )}
@@ -715,8 +804,8 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
                     <IconLoader2 className="h-7 w-7 text-primary animate-spin" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium">KI analysiert...</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Felder werden automatisch ausgefüllt</p>
+                    <p className="text-sm font-medium">{t('scan_analyzing')}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t('scan_analyzing_sub')}</p>
                   </div>
                 </div>
               ) : scanSuccess ? (
@@ -725,8 +814,8 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
                     <IconCircleCheck className="h-7 w-7 text-green-600 dark:text-green-400" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium text-green-700 dark:text-green-400">Felder ausgefüllt!</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Prüfe die Werte und passe sie ggf. an</p>
+                    <p className="text-sm font-medium text-green-700 dark:text-green-400">{t('scan_success')}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t('scan_success_sub')}</p>
                   </div>
                 </div>
               ) : (
@@ -735,7 +824,7 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
                     <IconPhotoPlus className="h-7 w-7 text-primary/70" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium">Foto oder Dokument hierher ziehen oder auswählen</p>
+                    <p className="text-sm font-medium">{t('scan_upload')}</p>
                   </div>
                 </div>
               )}
@@ -759,11 +848,11 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
             <div className="grid grid-cols-3 gap-2">
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); cameraInputRef.current?.click(); }}>
-                <IconCamera className="h-3.5 w-3.5 mr-1" />Kamera
+                <IconCamera className="h-3.5 w-3.5 mr-1" />{t('scan_camera_btn')}
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-                <IconUpload className="h-3.5 w-3.5 mr-1" />Foto wählen
+                <IconUpload className="h-3.5 w-3.5 mr-1" />{t('scan_file_btn')}
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => {
@@ -774,13 +863,13 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
                     setTimeout(() => { if (fileInputRef.current) fileInputRef.current.accept = 'image/*,application/pdf'; }, 100);
                   }
                 }}>
-                <IconFileText className="h-3.5 w-3.5 mr-1" />Dokument
+                <IconFileText className="h-3.5 w-3.5 mr-1" />{t('scan_doc_btn')}
               </Button>
             </div>
 
             <div className="relative">
               <Textarea
-                placeholder="Text eingeben oder einfügen, z.B. Notizen, E-Mails, Beschreibungen..."
+                placeholder={t('scan_text_placeholder')}
                 value={aiText}
                 onChange={e => {
                   setAiText(e.target.value);
@@ -808,7 +897,7 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
                     if (text) setAiText(prev => prev ? prev + '\n' + text : text);
                   } catch {}
                 }}
-                title="Paste"
+                title={t('paste')}
               >
                 <IconClipboard className="h-4 w-4" />
               </button>
@@ -822,21 +911,37 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
                 disabled={scanning}
                 onClick={() => handleAiExtract()}
               >
-                <IconSparkles className="h-3.5 w-3.5 mr-1.5" />Analysieren
+                <IconSparkles className="h-3.5 w-3.5 mr-1.5" />{t('scan_text_analyze')}
               </Button>
             )}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 min-w-0">
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 min-w-0 max-sm:[&_input]:h-11">
           <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-4 min-w-0">
             {(() => {
               const renderField = (k: string) => {
                 const inlineHints = computedLayout.anchors[k] ?? [];
                 const refs = applookupRefs[k] ?? [];
+                // A field the plan gives to a TOOL. On CREATE it is not shown
+                // at all — the value does not exist yet and typing one only
+                // gets overwritten. On EDIT it stays a normal input with a
+                // note: when a tool could not compose its value (a missing
+                // ingredient), this is the only place to repair the record.
+                if (SYSTEM_ASSIGNED.includes(k) && !recordId) {
+                  return (
+                    <div key={k} className="space-y-1.5 min-w-0">
+                      <Label>{fieldLabel('kennzahlen', k)}</Label>
+                      <p className="text-sm text-muted-foreground">{t('assigned_by_system')}</p>
+                    </div>
+                  );
+                }
                 return (
                   <div key={k} className="space-y-1.5 min-w-0">
                     {fieldBlocks[k]}
+                    {SYSTEM_ASSIGNED.includes(k) && (
+                      <p className="text-xs text-muted-foreground">{t('assigned_by_system')}</p>
+                    )}
                     {refs.map(({ lookupKey }) => {
                       // Show the live numeric value the formula will pull from
                       // the selected lookup target (e.g. "Monatspreis: 34,90 €"
@@ -914,19 +1019,32 @@ export function KennzahlenDialog({ open, onClose, onSubmit, defaultValues, recor
                 })()}
               </div>
             )}
+            {showErrors && missingRequired.length > 0 && (
+              <p className="text-xs text-destructive flex items-center gap-1.5" role="alert">
+                <IconAlertCircle className="h-3.5 w-3.5 shrink-0" />
+                {t('missing_required')}
+              </p>
+            )}
             {recordId && (
               <div className="pt-2 border-t border-border">
                 <AttachmentsSection appId={APP_IDS.KENNZAHLEN} recordId={recordId} />
               </div>
             )}
           </div>
-          <DialogFooter className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-3 gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>Abbrechen</Button>
+          {submitError && (
+            <div className="flex items-start gap-2 border-t border-destructive/20 bg-destructive/10 px-6 py-2.5 text-sm text-destructive" role="alert">
+              <IconAlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span className="min-w-0 break-words">{submitError}</span>
+            </div>
+          )}
+          <DialogFooter className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-3 gap-2 max-sm:flex-row">
+            <Button type="button" variant="outline" onClick={onClose} className="max-sm:h-12 max-sm:flex-1 max-sm:text-base">{t('cancel')}</Button>
             <Button
               type="submit"
-              disabled={saving || !isDirty}
+              className="max-sm:h-12 max-sm:flex-1 max-sm:text-base"
+              disabled={saving || !isDirty || (showErrors && missingRequired.length > 0)}
             >
-              {saving ? 'Speichern...' : defaultValues ? 'Speichern' : 'Erstellen'}
+              {saving ? t('saving') : defaultValues ? t('save') : t('create')}
             </Button>
           </DialogFooter>
         </form>

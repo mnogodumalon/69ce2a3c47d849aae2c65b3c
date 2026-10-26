@@ -20,6 +20,7 @@ import {
   IconFileText, IconSearch, IconShieldCheck, IconAlertTriangle, IconAlertCircle,
   IconCheck, IconRefresh, IconTool, IconChevronRight, IconChartBar
 } from '@tabler/icons-react';
+import { tx } from '@/i18n';
 
 const APPGROUP_ID = '69ce2a3c47d849aae2c65b3c';
 const REPAIR_ENDPOINT = '/claude/build/repair';
@@ -132,11 +133,11 @@ export default function DashboardOverview() {
   };
 
   const statusFilterOptions = [
-    { key: 'all', label: 'Alle', count: kpis.total },
-    { key: 'konform', label: 'Konform', count: kpis.konform },
-    { key: 'kritisch', label: 'Kritisch', count: kpis.kritisch },
-    { key: 'nicht_konform', label: 'Nicht konform', count: kpis.nichtKonform },
-    { key: 'none', label: 'Kein Status', count: kpis.ohneStatus },
+    { key: 'all', label: tx('Alle'), count: kpis.total },
+    { key: 'konform', label: tx('Konform'), count: kpis.konform },
+    { key: 'kritisch', label: tx('Kritisch'), count: kpis.kritisch },
+    { key: 'nicht_konform', label: tx('Nicht konform'), count: kpis.nichtKonform },
+    { key: 'none', label: tx('Kein Status'), count: kpis.ohneStatus },
   ];
 
   return (
@@ -149,8 +150,8 @@ export default function DashboardOverview() {
         >
           <IconPackage size={22} className="text-primary shrink-0" stroke={1.5} />
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-foreground text-sm leading-snug">Verpackung erfassen &amp; bewerten</p>
-            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">Verpackungstyp anlegen, PPWR-Konformität bewerten, Nachweise hochladen</p>
+            <p className="font-semibold text-foreground text-sm leading-snug">{tx('Verpackung erfassen &amp; bewerten')}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{tx('Verpackungstyp anlegen, PPWR-Konformität bewerten, Nachweise hochladen')}</p>
           </div>
           <IconChevronRight size={16} className="text-muted-foreground shrink-0" />
         </a>
@@ -160,8 +161,8 @@ export default function DashboardOverview() {
         >
           <IconChartBar size={22} className="text-primary shrink-0" stroke={1.5} />
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-foreground text-sm leading-snug">Jahresbericht erfassen</p>
-            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">Jährliche KPI-Daten zu Verpackungsmengen und Recyclingquoten dokumentieren</p>
+            <p className="font-semibold text-foreground text-sm leading-snug">{tx('Jahresbericht erfassen')}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{tx('Jährliche KPI-Daten zu Verpackungsmengen und Recyclingquoten dokumentieren')}</p>
           </div>
           <IconChevronRight size={16} className="text-muted-foreground shrink-0" />
         </a>
@@ -170,27 +171,27 @@ export default function DashboardOverview() {
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
-          title="Verpackungstypen"
+          title={tx('Verpackungstypen')}
           value={String(kpis.total)}
-          description="Gesamt erfasst"
+          description={tx('Gesamt erfasst')}
           icon={<IconPackage size={18} className="text-muted-foreground" />}
         />
         <StatCard
-          title="Konform"
+          title={tx('Konform')}
           value={String(kpis.konform)}
-          description={kpis.total > 0 ? `${Math.round((kpis.konform / kpis.total) * 100)} % der Typen` : '0 %'}
+          description={kpis.total > 0 ? tx`${Math.round((kpis.konform / kpis.total) * 100)} % der Typen` : '0 %'}
           icon={<IconShieldCheck size={18} className="text-green-600" />}
         />
         <StatCard
-          title="Kritisch"
+          title={tx('Kritisch')}
           value={String(kpis.kritisch)}
-          description="Handlungsbedarf"
+          description={tx('Handlungsbedarf')}
           icon={<IconAlertTriangle size={18} className="text-amber-500" />}
         />
         <StatCard
-          title="Nicht konform"
+          title={tx('Nicht konform')}
           value={String(kpis.nichtKonform)}
-          description="Regelverstoß"
+          description={tx('Regelverstoß')}
           icon={<IconAlertCircle size={18} className="text-destructive" />}
         />
       </div>
@@ -200,14 +201,14 @@ export default function DashboardOverview() {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-border">
           <div>
-            <h2 className="font-semibold text-foreground">Verpackungstypen</h2>
+            <h2 className="font-semibold text-foreground">{tx('Verpackungstypen')}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {filteredVerpackungen.length} von {kpis.total} Typen
+              {filteredVerpackungen.length} {tx('von')} {kpis.total} {tx('Typen')}
             </p>
           </div>
           <Button size="sm" onClick={() => setVerpackungDialog({ open: true, record: null })}>
             <IconPlus size={14} className="mr-1.5 shrink-0" />
-            Verpackung anlegen
+            {tx('Verpackung anlegen')}
           </Button>
         </div>
 
@@ -217,7 +218,7 @@ export default function DashboardOverview() {
           <div className="relative min-w-[140px] flex-1">
             <IconSearch size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground shrink-0" />
             <Input
-              placeholder="Name, ID oder Unternehmen..."
+              placeholder={tx('Name, ID oder Unternehmen...')}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="pl-7 h-8 text-sm"
@@ -231,7 +232,7 @@ export default function DashboardOverview() {
               onChange={e => setCompanyFilter(e.target.value)}
               className="h-8 rounded-md border border-input bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              <option value="all">Alle Unternehmen</option>
+              <option value="all">{tx('Alle Unternehmen')}</option>
               {unternehmen.map(u => (
                 <option key={u.record_id} value={u.record_id}>
                   {u.fields.firmenname ?? u.record_id}
@@ -269,16 +270,16 @@ export default function DashboardOverview() {
         {filteredVerpackungen.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center px-4">
             <IconPackage size={48} className="text-muted-foreground mb-3" stroke={1.5} />
-            <p className="font-medium text-foreground mb-1">Keine Verpackungstypen gefunden</p>
+            <p className="font-medium text-foreground mb-1">{tx('Keine Verpackungstypen gefunden')}</p>
             <p className="text-sm text-muted-foreground mb-4">
               {searchQuery || statusFilter !== 'all' || companyFilter !== 'all'
-                ? 'Passe die Filter an oder setze sie zurück.'
-                : 'Lege deine erste Verpackung an, um loszulegen.'}
+                ? tx('Passe die Filter an oder setze sie zurück.')
+                : tx('Lege deine erste Verpackung an, um loszulegen.')}
             </p>
             {!searchQuery && statusFilter === 'all' && companyFilter === 'all' && (
               <Button size="sm" onClick={() => setVerpackungDialog({ open: true, record: null })}>
                 <IconPlus size={14} className="mr-1.5" />
-                Erste Verpackung anlegen
+                {tx('Erste Verpackung anlegen')}
               </Button>
             )}
           </div>
@@ -321,11 +322,11 @@ export default function DashboardOverview() {
                           {v.fields.verpackungsname ?? '—'}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {v.fields.verpackungs_id ? `ID: ${v.fields.verpackungs_id}` : 'Keine ID'}
+                          {v.fields.verpackungs_id ? `ID: ${v.fields.verpackungs_id}` : tx('Keine ID')}
                         </p>
                       </div>
                       <Badge variant="outline" className={`shrink-0 text-xs ${badgeClass}`}>
-                        {statusLabel ?? 'Kein Status'}
+                        {statusLabel ?? tx('Kein Status')}
                       </Badge>
                     </div>
 
@@ -352,7 +353,7 @@ export default function DashboardOverview() {
                           )}
                           {v.fields.mehrwegfaehig && (
                             <span className="rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px]">
-                              Mehrweg
+                              {tx('Mehrweg')}
                             </span>
                           )}
                         </div>
@@ -360,7 +361,7 @@ export default function DashboardOverview() {
 
                       {rs?.fields.bewertungsdatum && (
                         <p className="text-[11px] text-muted-foreground">
-                          Bewertet am {formatDate(rs.fields.bewertungsdatum)}
+                          {tx('Bewertet am')} {formatDate(rs.fields.bewertungsdatum)}
                           {rs.fields.bewerter_nachname ? ` · ${rs.fields.bewerter_vorname ?? ''} ${rs.fields.bewerter_nachname}`.trim() : ''}
                         </p>
                       )}
@@ -377,7 +378,7 @@ export default function DashboardOverview() {
                           ))}
                           {rs.fields.problemfelder.length > 2 && (
                             <span className="text-[10px] text-muted-foreground self-center">
-                              +{rs.fields.problemfelder.length - 2} weitere
+                              +{rs.fields.problemfelder.length - 2} {tx('weitere')}
                             </span>
                           )}
                         </div>
@@ -391,7 +392,7 @@ export default function DashboardOverview() {
                         className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                       >
                         <IconFileText size={12} className="shrink-0" />
-                        {nachweiCount} Nachweis{nachweiCount !== 1 ? 'e' : ''}
+                        {nachweiCount} {tx('Nachweis')}{nachweiCount !== 1 ? 'e' : ''}
                       </button>
 
                       <div className="flex items-center gap-1 ml-auto">
@@ -407,13 +408,13 @@ export default function DashboardOverview() {
                             })
                           }
                         >
-                          {rs ? 'Status ändern' : 'Status setzen'}
+                          {rs ? tx('Status ändern') : tx('Status setzen')}
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
                           className="h-7 w-7 p-0"
-                          title="Bearbeiten"
+                          title={tx('Bearbeiten')}
                           onClick={() => setVerpackungDialog({ open: true, record: v })}
                         >
                           <IconPencil size={13} className="shrink-0" />
@@ -422,7 +423,7 @@ export default function DashboardOverview() {
                           size="sm"
                           variant="ghost"
                           className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                          title="Löschen"
+                          title={tx('Löschen')}
                           onClick={() => setDeleteTarget({ id: v.record_id })}
                         >
                           <IconTrash size={13} className="shrink-0" />
@@ -495,8 +496,8 @@ export default function DashboardOverview() {
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Verpackungstyp löschen"
-        description="Möchtest du diesen Verpackungstyp wirklich löschen? Zugehörige Nachweise und Statuseinträge bleiben erhalten."
+        title={tx('Verpackungstyp löschen')}
+        description={tx('Möchtest du diesen Verpackungstyp wirklich löschen? Zugehörige Nachweise und Statuseinträge bleiben erhalten.')}
         onConfirm={handleDeleteConfirm}
         onClose={() => setDeleteTarget(null)}
       />
@@ -528,7 +529,7 @@ function DashboardError({ error, onRetry }: { error: Error; onRetry: () => void 
 
   const handleRepair = async () => {
     setRepairing(true);
-    setRepairStatus('Reparatur wird gestartet...');
+    setRepairStatus(tx('Reparatur wird gestartet...'));
     setRepairFailed(false);
 
     const errorContext = JSON.stringify({
@@ -568,7 +569,7 @@ function DashboardError({ error, onRetry }: { error: Error; onRetry: () => void 
           const content = line.slice(6);
           if (content.startsWith('[STATUS]')) setRepairStatus(content.replace(/^\[STATUS]\s*/, ''));
           if (content.startsWith('[DONE]')) { setRepairDone(true); setRepairing(false); }
-          if (content.startsWith('[ERROR]') && !content.includes('Dashboard-Links')) setRepairFailed(true);
+          if (content.startsWith('[ERROR]') && !content.includes('Dashboard-Links')) setRepairFailed(true); /* i18n-exempt */
         }
       }
     } catch {
@@ -584,11 +585,11 @@ function DashboardError({ error, onRetry }: { error: Error; onRetry: () => void 
           <IconCheck size={22} className="text-green-500" />
         </div>
         <div className="text-center">
-          <h3 className="font-semibold text-foreground mb-1">Dashboard repariert</h3>
-          <p className="text-sm text-muted-foreground max-w-xs">Das Problem wurde behoben. Bitte lade die Seite neu.</p>
+          <h3 className="font-semibold text-foreground mb-1">{tx('Dashboard repariert')}</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">{tx('Das Problem wurde behoben. Bitte lade die Seite neu.')}</p>
         </div>
         <Button size="sm" onClick={() => window.location.reload()}>
-          <IconRefresh size={14} className="mr-1" />Neu laden
+          <IconRefresh size={14} className="mr-1" />{tx('Neu laden')}
         </Button>
       </div>
     );
@@ -600,22 +601,22 @@ function DashboardError({ error, onRetry }: { error: Error; onRetry: () => void 
         <IconAlertCircle size={22} className="text-destructive" />
       </div>
       <div className="text-center">
-        <h3 className="font-semibold text-foreground mb-1">Fehler beim Laden</h3>
+        <h3 className="font-semibold text-foreground mb-1">{tx('Fehler beim Laden')}</h3>
         <p className="text-sm text-muted-foreground max-w-xs">
           {repairing ? repairStatus : error.message}
         </p>
       </div>
       <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={onRetry} disabled={repairing}>Erneut versuchen</Button>
+        <Button variant="outline" size="sm" onClick={onRetry} disabled={repairing}>{tx('Erneut versuchen')}</Button>
         <Button size="sm" onClick={handleRepair} disabled={repairing}>
           {repairing
             ? <span className="inline-block w-3.5 h-3.5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin mr-1" />
             : <IconTool size={14} className="mr-1" />}
-          {repairing ? 'Reparatur läuft...' : 'Dashboard reparieren'}
+          {repairing ? tx('Reparatur läuft...') : tx('Dashboard reparieren')}
         </Button>
       </div>
       {repairFailed && (
-        <p className="text-sm text-destructive">Automatische Reparatur fehlgeschlagen. Bitte kontaktiere den Support.</p>
+        <p className="text-sm text-destructive">{tx('Automatische Reparatur fehlgeschlagen. Bitte kontaktiere den Support.')}</p>
       )}
     </div>
   );

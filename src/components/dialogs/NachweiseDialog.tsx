@@ -1,6 +1,21 @@
+/**
+ * NachweiseDialog — pre-generated create/edit dialog for Nachweise.
+ *
+ * Props: open, onClose, onSubmit(fields) => Promise<void>, defaultValues?,
+ * recordId? (pass when EDITING — enables the attachments section),
+ * verpackungstypenList (full hook array — resolves the Verpackungstypen applookup),
+ * enablePhotoScan?, enablePhotoLocation?.
+ *
+ * defaultValues is SHAPE-TOLERANT and its prop type is the EXPORTED
+ * NachweiseDialogDefaults — NOT the entity field type: lookup fields accept
+ * the bare KEY string (or LookupValue), applookup fields the bare record id
+ * (or record URL); the dialog normalizes. Type prefill STATE with the export:
+ *  ❌ useState<Partial<Nachweise['fields']>>({ … })   // LookupValue fields reject string prefills (TS2322)
+ *  ✓ useState<NachweiseDialogDefaults | undefined>(undefined)
+ */
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import type { Nachweise, Verpackungstypen } from '@/types/app';
-import { APP_IDS } from '@/types/app';
+import type { Nachweise, Verpackungstypen, LookupValue } from '@/types/app';
+import { APP_IDS, LOOKUP_OPTIONS } from '@/types/app';
 import { extractRecordId, createRecordUrl, cleanFieldsForApi, uploadFile, getUserProfile, LivingAppsService } from '@/services/livingAppsService';
 import {
   Dialog, DialogContent, DialogHeader,
@@ -13,20 +28,30 @@ import type { ComputedContext } from '@/config/form-enhancements/types';
 import { applyFieldOrder, flattenFieldOrder, applyDefaults, evalComputed, numberInputProps, clampNumberValue, classifyComputed, extractApplookupRefs, mergeApplookupRefs, resolveApplookupRef } from '@/config/form-enhancements/types';
 import { formEnhancements, computedDeps, computedApplookupRefs } from '@/config/form-enhancements/Nachweise';
 import { AttachmentsSection } from '@/components/AttachmentsSection';
+import { requiredMessage } from '@/lib/journey/messages';
+import { t, appLabel, fieldLabel, lookupLabel, localeTag, CURRENCY } from '@/i18n';
 import { Textarea } from '@/components/ui/textarea';
 import { Combobox } from '@/components/Combobox';
 import { VerpackungstypenDialog } from '@/components/dialogs/VerpackungstypenDialog';
 import { DatePicker } from '@/components/DatePicker';
 import { Checkbox } from '@/components/ui/checkbox';
-import { IconCamera, IconChevronDown, IconCircleCheck, IconClipboard, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
+import { IconAlertCircle, IconCamera, IconChevronDown, IconCircleCheck, IconClipboard, IconFileText, IconLoader2, IconPhotoPlus, IconSparkles, IconUpload, IconX } from '@tabler/icons-react';
 import { fileToDataUri, extractFromInput, extractPhotoMeta, reverseGeocode, dataUriToBlob } from '@/lib/ai';
 import { lookupKey } from '@/lib/formatters';
+
+/** Widened prefill type for NachweiseDialog.defaultValues — see file header. */
+export type NachweiseDialogDefaults = Omit<Nachweise['fields'], 'dokumentart'> & {
+    dokumentart?: LookupValue | string;
+  };
 
 interface NachweiseDialogProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (fields: Nachweise['fields']) => Promise<void>;
-  defaultValues?: Nachweise['fields'];
+  /** SHAPE-TOLERANT: lookup fields accept the bare key (string) or the
+   *  LookupValue object; applookup fields the bare record id or the full
+   *  record URL — the dialog normalizes both. */
+  defaultValues?: NachweiseDialogDefaults;
   /** Record id when editing — enables the attachments section. Omit on create. */
   recordId?: string;
   verpackungstypenList: Verpackungstypen[];
@@ -34,20 +59,48 @@ interface NachweiseDialogProps {
   enablePhotoLocation?: boolean;
 }
 
+// defaultValues are SHAPE-TOLERANT: the dialog resolves bare lookup keys via
+// its own options and bare record ids via the field's target app — consumers
+// never carry the LookupValue/record-URL shape in their head.
+const NORMALIZE_LOOKUPS: Record<string, readonly { key: string; label: string }[]> = {
+  dokumentart: LOOKUP_OPTIONS['nachweise']?.['dokumentart'] ?? [],
+};
+const NORMALIZE_APPLOOKUPS: Record<string, string> = {
+  verpackungstyp_ref: APP_IDS.VERPACKUNGSTYPEN,
+};
+function normalizeDefaults(values: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...values };
+  for (const [k, opts] of Object.entries(NORMALIZE_LOOKUPS)) {
+    const v = out[k];
+    if (typeof v === 'string') out[k] = opts.find(o => o.key === v) ?? { key: v, label: v };
+    else if (Array.isArray(v)) out[k] = v.map(x => (typeof x === 'string' ? opts.find(o => o.key === x) ?? { key: x, label: x } : x));
+  }
+  for (const [k, appId] of Object.entries(NORMALIZE_APPLOOKUPS)) {
+    const v = out[k];
+    if (typeof v === 'string' && v !== '' && !v.startsWith('http')) out[k] = createRecordUrl(appId, v);
+    else if (Array.isArray(v)) out[k] = v.map(x => (typeof x === 'string' && x !== '' && !x.startsWith('http') ? createRecordUrl(appId, x) : x));
+  }
+  return out;
+}
+
 export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, recordId, verpackungstypenList, enablePhotoScan = true, enablePhotoLocation = true }: NachweiseDialogProps) {
   const [fields, setFields] = useState<Partial<Nachweise['fields']>>({});
   const [saving, setSaving] = useState(false);
+  const normalizedDefaults = useMemo<Record<string, unknown> | undefined>(
+    () => (defaultValues ? normalizeDefaults(defaultValues as Record<string, unknown>) : undefined),
+    [defaultValues],
+  );
   // Dirty-tracking: in edit-mode the Speichern button is disabled until the
   // user actually changes something. JSON.stringify is good enough for our
   // fields (plain values + LookupValue objects + string arrays).
   const isDirty = useMemo(() => {
-    if (!defaultValues) return true;  // create-mode: always allow submit
+    if (!normalizedDefaults) return true;  // create-mode: always allow submit
     try {
-      return JSON.stringify(fields) !== JSON.stringify(defaultValues);
+      return JSON.stringify(fields) !== JSON.stringify(normalizedDefaults);
     } catch {
       return true;
     }
-  }, [fields, defaultValues]);
+  }, [fields, normalizedDefaults]);
   // Inline-Create state for "Verpackungstypen" target. The dropdown's
   // "+ Neuer …" option opens a sub-dialog; on submit we POST, add the new
   // record to the local `extraVerpackungstypen` list, and select it in
@@ -65,6 +118,14 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
     setCreateVerpackungstypenInitial(q);
     setCreateVerpackungstypenOpen(true);
   }
+  // Fields the plan assigns to a tool (empty without a plan).
+  const SYSTEM_ASSIGNED: string[] = [];
+  const [showErrors, setShowErrors] = useState(false);
+  const REQUIRED_FIELDS = ['verpackungstyp_ref', 'dokumentart', 'aussteller', 'ausstellungsdatum'] as const;
+  const missingRequired = REQUIRED_FIELDS.filter(k => {
+    const v = (fields as Record<string, unknown>)[k];
+    return v == null || v === '' || (Array.isArray(v) && v.length === 0);
+  });
   const [aiOpen, setAiOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
@@ -115,12 +176,13 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
 
   useEffect(() => {
     if (open) {
-      setFields(applyDefaults((defaultValues ?? {}) as Record<string, unknown>, formEnhancements.defaults) as Partial<Nachweise['fields']>);
+      setFields(applyDefaults(normalizedDefaults ?? {}, formEnhancements.defaults) as Partial<Nachweise['fields']>);
       setPreview(null);
       setScanSuccess(false);
       setAiText('');
+      setSubmitError(null);
     }
-  }, [open, defaultValues]);
+  }, [open, normalizedDefaults]);
   useEffect(() => {
     try { localStorage.setItem('ai-use-personal-info', String(usePersonalInfo)); } catch {}
   }, [usePersonalInfo]);
@@ -138,9 +200,20 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
     }
   }
 
+  // Submit errors surface IN the dialog (it is modal — a banner in the page
+  // body would be hidden behind it). A consumer onSubmit that THROWS (the
+  // documented "throw to prevent closing" validation pattern) lands here:
+  // the dialog stays open, nothing is saved, the message is visible.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (missingRequired.length > 0) {
+      setShowErrors(true);
+      return;
+    }
     setSaving(true);
+    setSubmitError(null);
     try {
       // Fill empty number slots from computed values; user-typed values always win.
       // CRITICAL: only backend-mapped keys may be backfilled. Virtual computeds
@@ -159,6 +232,8 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
       const clean = cleanFieldsForApi(merged, 'nachweise');
       await onSubmit(clean as Nachweise['fields']);
       onClose();
+    } catch (err) {
+      setSubmitError(err instanceof Error && err.message ? err.message : t('submit_error'));
     } finally {
       setSaving(false);
     }
@@ -201,7 +276,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
         }
       }
       const photoContext = contextParts.length ? contextParts.join('\n') : undefined;
-      const schema = `{\n  "verpackungstyp_ref": string | null, // Display name from Verpackungstypen (see <available-records>)\n  "dokumentart": LookupValue | null, // Dokumentart (select one key: "zertifikat" | "laboranalyse" | "gutachten" | "sonstiges" | "pruefbericht") mapping: zertifikat=Zertifikat, laboranalyse=Laboranalyse, gutachten=Gutachten, sonstiges=Sonstiges, pruefbericht=Prüfbericht\n  "aussteller": string | null, // Aussteller\n  "ausstellungsdatum": string | null, // YYYY-MM-DD\n  "gueltig_bis": string | null, // YYYY-MM-DD\n  "dokument_url": string | null, // Dokument-Link (URL)\n  "nachweis_hinweise": string | null, // Hinweise / Anmerkungen\n}`;
+      const schema = `{\n  "verpackungstyp_ref": string | null, // Display name from Verpackungstypen (see <available-records>)\n  "dokumentart": LookupValue | null, // Dokumentart (select one key: "pruefbericht" | "zertifikat" | "laboranalyse" | "gutachten" | "sonstiges") mapping: pruefbericht=Prüfbericht, zertifikat=Zertifikat, laboranalyse=Laboranalyse, gutachten=Gutachten, sonstiges=Sonstiges\n  "aussteller": string | null, // Aussteller\n  "dokument_url": string | null, // Dokument-Link (URL)\n  "ausstellungsdatum": string | null, // YYYY-MM-DD\n  "gueltig_bis": string | null, // YYYY-MM-DD\n  "nachweis_hinweise": string | null, // Hinweise / Anmerkungen\n}`;
       const raw = await extractFromInput<Record<string, unknown>>(schema, {
         dataUri: uri,
         userText: aiText.trim() || undefined,
@@ -240,7 +315,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
       setScanSuccess(true);
       setTimeout(() => setScanSuccess(false), 3000);
     } catch (err) {
-      console.error('Scan fehlgeschlagen:', err);
+      console.error(`${t('scan_error')}:`, err);
       alert(err instanceof Error ? err.message : String(err));
     } finally {
       setScanning(false);
@@ -275,12 +350,14 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
     }
   }, []);
 
-  const DIALOG_INTENT = defaultValues ? 'Nachweise bearbeiten' : 'Nachweise hinzufügen';
+  const DIALOG_INTENT = defaultValues
+    ? t('edit_entity', { entity: appLabel('nachweise') })
+    : t('new_entity', { entity: appLabel('nachweise') });
 
   const fieldBlocks: Record<string, React.ReactNode> = {
     'verpackungstyp_ref': (
       <div key="verpackungstyp_ref" className="space-y-1.5">
-        <Label htmlFor="verpackungstyp_ref">Verpackungstyp</Label>
+        <Label htmlFor="verpackungstyp_ref">{fieldLabel('nachweise', 'verpackungstyp_ref')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Combobox
           id="verpackungstyp_ref"
           placeholder=""
@@ -290,111 +367,136 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
           }))}
           value={extractRecordId(fields.verpackungstyp_ref)}
           onChange={id => setFields(f => ({ ...f, verpackungstyp_ref: id ? createRecordUrl(APP_IDS.VERPACKUNGSTYPEN, id) : undefined }))}
-          searchPlaceholder="Suchen…"
-          emptyText="Kein Treffer"
           onCreateNew={(q) => openCreateVerpackungstypen("verpackungstyp_ref", q)}
-          createLabel="Neu in Verpackungstypen"
+          createLabel={t('create_in', { entity: appLabel('verpackungstypen') })}
         />
+        {showErrors && !fields.verpackungstyp_ref && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('nachweise', 'verpackungstyp_ref')}</p>
+        )}
       </div>
     ),
     'dokumentart': (
       <div key="dokumentart" className="space-y-1.5">
-        <Label htmlFor="dokumentart">Dokumentart</Label>
+        <Label htmlFor="dokumentart">{fieldLabel('nachweise', 'dokumentart')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <div role="radiogroup" className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={lookupKey(fields.dokumentart) === 'pruefbericht'}
+            onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'pruefbericht' ? undefined : 'pruefbericht') as any }))}
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+              lookupKey(fields.dokumentart) === 'pruefbericht'
+                ? 'bg-foreground text-background border-foreground'
+                : 'bg-background text-foreground border-input hover:bg-accent'
+            }`}
+          >
+            {lookupLabel('nachweise', 'dokumentart', 'pruefbericht') ?? 'Prüfbericht'}
+          </button>
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.dokumentart) === 'zertifikat'}
             onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'zertifikat' ? undefined : 'zertifikat') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.dokumentart) === 'zertifikat'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Zertifikat
+            {lookupLabel('nachweise', 'dokumentart', 'zertifikat') ?? 'Zertifikat'}
           </button>
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.dokumentart) === 'laboranalyse'}
             onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'laboranalyse' ? undefined : 'laboranalyse') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.dokumentart) === 'laboranalyse'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Laboranalyse
+            {lookupLabel('nachweise', 'dokumentart', 'laboranalyse') ?? 'Laboranalyse'}
           </button>
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.dokumentart) === 'gutachten'}
             onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'gutachten' ? undefined : 'gutachten') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.dokumentart) === 'gutachten'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Gutachten
+            {lookupLabel('nachweise', 'dokumentart', 'gutachten') ?? 'Gutachten'}
           </button>
           <button
             type="button"
             role="radio"
             aria-checked={lookupKey(fields.dokumentart) === 'sonstiges'}
             onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'sonstiges' ? undefined : 'sonstiges') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center justify-center min-h-9 max-sm:min-h-11 max-sm:px-4 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
               lookupKey(fields.dokumentart) === 'sonstiges'
                 ? 'bg-foreground text-background border-foreground'
                 : 'bg-background text-foreground border-input hover:bg-accent'
             }`}
           >
-            Sonstiges
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={lookupKey(fields.dokumentart) === 'pruefbericht'}
-            onClick={() => setFields(f => ({ ...f, dokumentart: (lookupKey(f.dokumentart) === 'pruefbericht' ? undefined : 'pruefbericht') as any }))}
-            className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-              lookupKey(fields.dokumentart) === 'pruefbericht'
-                ? 'bg-foreground text-background border-foreground'
-                : 'bg-background text-foreground border-input hover:bg-accent'
-            }`}
-          >
-            Prüfbericht
+            {lookupLabel('nachweise', 'dokumentart', 'sonstiges') ?? 'Sonstiges'}
           </button>
         </div>
+        {showErrors && !fields.dokumentart && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('nachweise', 'dokumentart')}</p>
+        )}
       </div>
     ),
     'aussteller': (
       <div key="aussteller" className="space-y-1.5">
-        <Label htmlFor="aussteller">Aussteller</Label>
+        <Label htmlFor="aussteller">{fieldLabel('nachweise', 'aussteller')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="aussteller"
           placeholder=""
           value={fields.aussteller ?? ''}
           onChange={e => setFields(f => ({ ...f, aussteller: e.target.value }))}
+          required
+        />
+        {showErrors && !fields.aussteller && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('nachweise', 'aussteller')}</p>
+        )}
+      </div>
+    ),
+    'dokument_url': (
+      <div key="dokument_url" className="space-y-1.5">
+        <Label htmlFor="dokument_url">{fieldLabel('nachweise', 'dokument_url')}</Label>
+        <Input
+          id="dokument_url"
+          type="url"
+          inputMode="url"
+          placeholder=""
+          value={fields.dokument_url ?? ''}
+          onChange={e => setFields(f => ({ ...f, dokument_url: e.target.value }))}
         />
       </div>
     ),
     'ausstellungsdatum': (
       <div key="ausstellungsdatum" className="space-y-1.5">
-        <Label htmlFor="ausstellungsdatum">Ausstellungsdatum</Label>
+        <Label htmlFor="ausstellungsdatum">{fieldLabel('nachweise', 'ausstellungsdatum')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <DatePicker
           id="ausstellungsdatum"
           placeholder=""
           mode="date"
           value={fields.ausstellungsdatum ?? null}
           onChange={v => setFields(f => ({ ...f, ausstellungsdatum: v ?? undefined }))}
+          required
         />
+        {showErrors && !fields.ausstellungsdatum && (
+          <p className="text-xs text-destructive mt-1" role="alert">{requiredMessage('nachweise', 'ausstellungsdatum')}</p>
+        )}
       </div>
     ),
     'gueltig_bis': (
       <div key="gueltig_bis" className="space-y-1.5">
-        <Label htmlFor="gueltig_bis">Gültig bis</Label>
+        <Label htmlFor="gueltig_bis">{fieldLabel('nachweise', 'gueltig_bis')}</Label>
         <DatePicker
           id="gueltig_bis"
           placeholder=""
@@ -406,7 +508,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
     ),
     'dokument_datei': (
       <div key="dokument_datei" className="space-y-1.5">
-        <Label htmlFor="dokument_datei">Dokument (Datei-Upload)</Label>
+        <Label htmlFor="dokument_datei">{fieldLabel('nachweise', 'dokument_datei')}</Label>
         {fields.dokument_datei ? (
           <div className="flex items-center gap-3 rounded-lg border p-2">
             <div className="relative h-14 w-14 shrink-0 rounded-md bg-muted overflow-hidden">
@@ -426,7 +528,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
                 <label
                   className="text-xs text-primary hover:underline cursor-pointer"
                 >
-                  Ändern
+                  {t('fr_change')}
                   <input
                     type="file"
                     accept="image/*,.pdf"
@@ -446,7 +548,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
                   className="text-xs text-muted-foreground hover:text-destructive"
                   onClick={() => setFields(f => ({ ...f, dokument_datei: undefined }))}
                 >
-                  Entfernen
+                  {t('fr_remove')}
                 </button>
               </div>
             </div>
@@ -456,7 +558,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
             className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
           >
             <IconUpload size={20} className="text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Datei hochladen</span>
+            <span className="text-sm text-muted-foreground">{t('fr_upload_file')}</span>
             <input
               type="file"
               accept="image/*,.pdf"
@@ -474,19 +576,9 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
         )}
       </div>
     ),
-    'dokument_url': (
-      <div key="dokument_url" className="space-y-1.5">
-        <Label htmlFor="dokument_url">Dokument-Link (URL)</Label>
-        <Input
-          id="dokument_url"
-          value={fields.dokument_url ?? ''}
-          onChange={e => setFields(f => ({ ...f, dokument_url: e.target.value }))}
-        />
-      </div>
-    ),
     'nachweis_hinweise': (
       <div key="nachweis_hinweise" className="space-y-1.5">
-        <Label htmlFor="nachweis_hinweise">Hinweise / Anmerkungen</Label>
+        <Label htmlFor="nachweis_hinweise">{fieldLabel('nachweise', 'nachweis_hinweise')}</Label>
         <Textarea
           id="nachweis_hinweise"
           placeholder=""
@@ -510,7 +602,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
   //     kein passendes Backend-Feld in orderedFields) erscheinen NICHT als
   //     Input, sondern unten als kompakte 'Berechnungen'-Übersicht oder als
   //     Inline-Hint unter dem letzten beitragenden Input.
-  const FIELD_LABELS: Record<string, string> = {"verpackungstyp_ref": "Verpackungstyp", "dokumentart": "Dokumentart", "aussteller": "Aussteller", "ausstellungsdatum": "Ausstellungsdatum", "gueltig_bis": "Gültig bis", "dokument_datei": "Dokument (Datei-Upload)", "dokument_url": "Dokument-Link (URL)", "nachweis_hinweise": "Hinweise / Anmerkungen"};
+  const FIELD_LABELS: Record<string, string> = {"verpackungstyp_ref": "Verpackungstyp", "dokumentart": "Dokumentart", "aussteller": "Aussteller", "dokument_url": "Dokument-Link (URL)", "ausstellungsdatum": "Ausstellungsdatum", "gueltig_bis": "Gültig bis", "dokument_datei": "Dokument (Datei-Upload)", "nachweis_hinweise": "Hinweise / Anmerkungen"};
   const CURRENCY_KEYS = new Set<string>([]);
   // Applookup-Referenz-Labels: pro applookup-Feld in dieser Form (ownKey)
   // eine Map { lookupKey: label } für ALLE Felder des Target-Schemas. Wird
@@ -565,15 +657,15 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
     // Backend-Feld mit €-Label ODER virtueller Computed-Key, dessen Name nach Geld aussieht.
     const looksLikeCurrency = CURRENCY_KEYS.has(k) || /(?:kosten|preis|betrag|gesamt|netto|brutto|summe|mwst|rabatt|anzahlung|umsatz|saldo)/i.test(k);
     if (looksLikeCurrency) {
-      return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return n.toLocaleString(localeTag(), { style: 'currency', currency: CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
-    return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+    return n.toLocaleString(localeTag(), { maximumFractionDigits: 2 });
   }
 
   return (
     <>
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0">
+      <DialogContent className="max-w-lg max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0 max-sm:[&>button]:size-10 max-sm:[&>button]:grid max-sm:[&>button]:place-items-center max-sm:[&>button]:rounded-full max-sm:[&>button]:border max-sm:[&>button]:border-input max-sm:[&>button]:bg-background max-sm:[&>button]:opacity-100 max-sm:[&>button>svg]:size-5">
         <DialogHeader className="px-6 pt-5 pb-3 border-b flex flex-row items-center gap-3 space-y-0">
           <DialogTitle className="flex-1 truncate text-left">{DIALOG_INTENT}</DialogTitle>
           {enablePhotoScan && (
@@ -582,21 +674,21 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
               onClick={() => setAiOpen(o => !o)}
               aria-expanded={aiOpen}
               aria-controls="ai-fill-panel"
-              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all mr-7 shadow-sm ${
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 max-sm:py-2.5 max-sm:px-4 text-xs font-semibold transition-all mr-7 max-sm:mr-12 shadow-sm ${
                 aiOpen
                   ? 'bg-primary text-primary-foreground ring-2 ring-primary/30'
                   : 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/15 hover:border-primary/50'
               }`}
             >
               <IconSparkles className={`h-3.5 w-3.5 ${aiOpen ? '' : 'text-primary'}`} />
-              <span className="hidden sm:inline">KI-Ausfüllen</span>
+              <span className="hidden sm:inline">{t('smart_fill')}</span>
               <IconChevronDown className={`h-3 w-3 transition-transform ${aiOpen ? 'rotate-180' : ''}`} />
             </button>
           )}
         </DialogHeader>
         {enablePhotoScan && aiOpen && (
           <div id="ai-fill-panel" className="border-b bg-muted/20 px-6 py-4 space-y-3">
-            <p className="text-xs text-muted-foreground">Versteht Fotos, Dokumente und Text und füllt alles für dich aus</p>
+            <p className="text-xs text-muted-foreground">{t('scan_header_sub')}</p>
             <div className="flex items-start gap-2 pl-0.5">
               <Checkbox
                 id="ai-use-personal-info"
@@ -606,21 +698,21 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
               />
               <span className="text-xs text-muted-foreground leading-snug">
                 <Label htmlFor="ai-use-personal-info" className="text-xs font-normal text-muted-foreground cursor-pointer inline">
-                  KI-Assistent darf zusätzlich Informationen zu meiner Person verwenden
+                  {t('useinfo_label')}
                 </Label>
                 {' '}
                 <button type="button" onClick={handleShowProfileInfo} className="text-xs text-primary hover:underline whitespace-nowrap">
-                  {profileLoading ? 'Lade...' : '(mehr Infos)'}
+                  {profileLoading ? t('useinfo_loading') : `(${t('useinfo_more')})`}
                 </button>
               </span>
             </div>
             {showProfileInfo && (
               <div className="rounded-md border bg-muted/50 p-2 text-xs max-h-40 overflow-y-auto">
-                <p className="font-medium mb-1">Folgende Infos über dich können von der KI genutzt werden:</p>
+                <p className="font-medium mb-1">{t('profile_preamble')}</p>
                 {profileData ? Object.values(profileData).map((v, i) => (
                   <span key={i}>{i > 0 && ", "}{typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
                 )) : (
-                  <span className="text-muted-foreground">Profil konnte nicht geladen werden</span>
+                  <span className="text-muted-foreground">{t('useinfo_error')}</span>
                 )}
               </div>
             )}
@@ -651,8 +743,8 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
                     <IconLoader2 className="h-7 w-7 text-primary animate-spin" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium">KI analysiert...</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Felder werden automatisch ausgefüllt</p>
+                    <p className="text-sm font-medium">{t('scan_analyzing')}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t('scan_analyzing_sub')}</p>
                   </div>
                 </div>
               ) : scanSuccess ? (
@@ -661,8 +753,8 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
                     <IconCircleCheck className="h-7 w-7 text-green-600 dark:text-green-400" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium text-green-700 dark:text-green-400">Felder ausgefüllt!</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Prüfe die Werte und passe sie ggf. an</p>
+                    <p className="text-sm font-medium text-green-700 dark:text-green-400">{t('scan_success')}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t('scan_success_sub')}</p>
                   </div>
                 </div>
               ) : (
@@ -671,7 +763,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
                     <IconPhotoPlus className="h-7 w-7 text-primary/70" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium">Foto oder Dokument hierher ziehen oder auswählen</p>
+                    <p className="text-sm font-medium">{t('scan_upload')}</p>
                   </div>
                 </div>
               )}
@@ -695,11 +787,11 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
             <div className="grid grid-cols-3 gap-2">
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); cameraInputRef.current?.click(); }}>
-                <IconCamera className="h-3.5 w-3.5 mr-1" />Kamera
+                <IconCamera className="h-3.5 w-3.5 mr-1" />{t('scan_camera_btn')}
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-                <IconUpload className="h-3.5 w-3.5 mr-1" />Foto wählen
+                <IconUpload className="h-3.5 w-3.5 mr-1" />{t('scan_file_btn')}
               </Button>
               <Button type="button" variant="outline" size="sm" className="h-10 text-xs" disabled={scanning}
                 onClick={e => {
@@ -710,13 +802,13 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
                     setTimeout(() => { if (fileInputRef.current) fileInputRef.current.accept = 'image/*,application/pdf'; }, 100);
                   }
                 }}>
-                <IconFileText className="h-3.5 w-3.5 mr-1" />Dokument
+                <IconFileText className="h-3.5 w-3.5 mr-1" />{t('scan_doc_btn')}
               </Button>
             </div>
 
             <div className="relative">
               <Textarea
-                placeholder="Text eingeben oder einfügen, z.B. Notizen, E-Mails, Beschreibungen..."
+                placeholder={t('scan_text_placeholder')}
                 value={aiText}
                 onChange={e => {
                   setAiText(e.target.value);
@@ -744,7 +836,7 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
                     if (text) setAiText(prev => prev ? prev + '\n' + text : text);
                   } catch {}
                 }}
-                title="Paste"
+                title={t('paste')}
               >
                 <IconClipboard className="h-4 w-4" />
               </button>
@@ -758,21 +850,37 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
                 disabled={scanning}
                 onClick={() => handleAiExtract()}
               >
-                <IconSparkles className="h-3.5 w-3.5 mr-1.5" />Analysieren
+                <IconSparkles className="h-3.5 w-3.5 mr-1.5" />{t('scan_text_analyze')}
               </Button>
             )}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 min-w-0">
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 min-w-0 max-sm:[&_input]:h-11">
           <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-4 min-w-0">
             {(() => {
               const renderField = (k: string) => {
                 const inlineHints = computedLayout.anchors[k] ?? [];
                 const refs = applookupRefs[k] ?? [];
+                // A field the plan gives to a TOOL. On CREATE it is not shown
+                // at all — the value does not exist yet and typing one only
+                // gets overwritten. On EDIT it stays a normal input with a
+                // note: when a tool could not compose its value (a missing
+                // ingredient), this is the only place to repair the record.
+                if (SYSTEM_ASSIGNED.includes(k) && !recordId) {
+                  return (
+                    <div key={k} className="space-y-1.5 min-w-0">
+                      <Label>{fieldLabel('nachweise', k)}</Label>
+                      <p className="text-sm text-muted-foreground">{t('assigned_by_system')}</p>
+                    </div>
+                  );
+                }
                 return (
                   <div key={k} className="space-y-1.5 min-w-0">
                     {fieldBlocks[k]}
+                    {SYSTEM_ASSIGNED.includes(k) && (
+                      <p className="text-xs text-muted-foreground">{t('assigned_by_system')}</p>
+                    )}
                     {refs.map(({ lookupKey }) => {
                       // Show the live numeric value the formula will pull from
                       // the selected lookup target (e.g. "Monatspreis: 34,90 €"
@@ -850,19 +958,32 @@ export function NachweiseDialog({ open, onClose, onSubmit, defaultValues, record
                 })()}
               </div>
             )}
+            {showErrors && missingRequired.length > 0 && (
+              <p className="text-xs text-destructive flex items-center gap-1.5" role="alert">
+                <IconAlertCircle className="h-3.5 w-3.5 shrink-0" />
+                {t('missing_required')}
+              </p>
+            )}
             {recordId && (
               <div className="pt-2 border-t border-border">
                 <AttachmentsSection appId={APP_IDS.NACHWEISE} recordId={recordId} />
               </div>
             )}
           </div>
-          <DialogFooter className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-3 gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>Abbrechen</Button>
+          {submitError && (
+            <div className="flex items-start gap-2 border-t border-destructive/20 bg-destructive/10 px-6 py-2.5 text-sm text-destructive" role="alert">
+              <IconAlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span className="min-w-0 break-words">{submitError}</span>
+            </div>
+          )}
+          <DialogFooter className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-3 gap-2 max-sm:flex-row">
+            <Button type="button" variant="outline" onClick={onClose} className="max-sm:h-12 max-sm:flex-1 max-sm:text-base">{t('cancel')}</Button>
             <Button
               type="submit"
-              disabled={saving || !isDirty}
+              className="max-sm:h-12 max-sm:flex-1 max-sm:text-base"
+              disabled={saving || !isDirty || (showErrors && missingRequired.length > 0)}
             >
-              {saving ? 'Speichern...' : defaultValues ? 'Speichern' : 'Erstellen'}
+              {saving ? t('saving') : defaultValues ? t('save') : t('create')}
             </Button>
           </DialogFooter>
         </form>

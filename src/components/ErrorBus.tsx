@@ -1,5 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { toast, Toaster } from 'sonner';
+import { t } from '@/i18n';
+
+
+/** Window `error` events that are notices, not failures — never a toast. */
+const BENIGN_BROWSER_NOTICES: RegExp[] = [/ResizeObserver loop/];
 
 const APPGROUP_ID = '69ce2a3c47d849aae2c65b3c';
 const REPAIR_ENDPOINT = '/claude/build/repair';
@@ -20,7 +25,7 @@ const BUG_TYPES = new Set<string>([
 ]);
 
 type ErrorSource = 'api' | 'promise' | 'js' | 'network';
-type ErrorCategory = 'user' | 'bug' | 'transient';
+type ErrorCategory = 'user' | 'bug' | 'transient' | 'auth' | 'forbidden';
 
 export interface ErrorPayload {
   source: ErrorSource;
@@ -35,6 +40,11 @@ export interface ErrorPayload {
 }
 
 function classify(err: ErrorPayload): ErrorCategory {
+  // 401: the Layout login screen is the surface for this — a repair run
+  // cannot fix a missing session. 403: signed in, but without the right for
+  // this list — a plain notice, never a repair offer (05.10.2026).
+  if (err.status === 401) return 'auth';
+  if (err.status === 403) return 'forbidden';
   if (err.source === 'network') return 'transient';
   if (typeof err.status === 'number' && err.status >= 500) return 'transient';
   if (err.type && USER_TYPES.has(err.type)) return 'user';
@@ -67,7 +77,7 @@ export function useErrorBus(): ErrorBusValue {
 }
 
 async function runRepair(err: ErrorPayload): Promise<void> {
-  const toastId = toast.loading('Reparatur wird gestartet...');
+  const toastId = toast.loading(t('repair_starting'));
   const errorContext = JSON.stringify({
     type: err.type || 'api_error',
     source: err.source,
@@ -90,7 +100,7 @@ async function runRepair(err: ErrorPayload): Promise<void> {
     });
 
     if (!resp.ok || !resp.body) {
-      toast.error('Automatische Reparatur fehlgeschlagen. Bitte kontaktieren Sie den Support.', { id: toastId });
+      toast.error(t('repair_failed'), { id: toastId });
       return;
     }
 
@@ -113,21 +123,21 @@ async function runRepair(err: ErrorPayload): Promise<void> {
           toast.loading(content.replace(/^\[STATUS]\s*/, ''), { id: toastId });
         }
         if (content.startsWith('[DONE]')) {
-          toast.success('Das Problem wurde behoben. Bitte laden Sie die Seite neu.', { id: toastId, duration: 12000 });
+          toast.success(t('repair_done_desc'), { id: toastId, duration: 12000 });
           finished = true;
         }
         if (content.startsWith('[ERROR]') && !content.includes('Dashboard-Links')) {
-          toast.error('Automatische Reparatur fehlgeschlagen. Bitte kontaktieren Sie den Support.', { id: toastId });
+          toast.error(t('repair_failed'), { id: toastId });
           finished = true;
         }
       }
     }
 
     if (!finished) {
-      toast.error('Automatische Reparatur fehlgeschlagen. Bitte kontaktieren Sie den Support.', { id: toastId });
+      toast.error(t('repair_failed'), { id: toastId });
     }
   } catch {
-    toast.error('Automatische Reparatur fehlgeschlagen. Bitte kontaktieren Sie den Support.', { id: toastId });
+    toast.error(t('repair_failed'), { id: toastId });
   }
 }
 
@@ -142,13 +152,18 @@ export function ErrorBusProvider({ children }: { children: ReactNode }) {
     seen.current.set(key, now);
 
     const category = classify(err);
-    if (category === 'user') return;
+    if (category === 'user' || category === 'auth') return;
+    if (category === 'forbidden') {
+      toast.error(t('perm_denied_title'), { description: t('perm_denied_desc'), duration: TOAST_DURATION_MS });
+      return;
+    }
 
     if (category === 'transient') {
-      toast.error('Netzwerkfehler', {
-        description: err.message || err.detail || 'Verbindung zum Server verloren.',
+      const isServerError = typeof err.status === 'number' && err.status >= 500;
+      toast.error(isServerError ? t('toast_server_title') : t('toast_network_title'), {
+        description: err.message || err.detail || (isServerError ? t('toast_server_desc') : t('toast_network_desc')),
         action: {
-          label: 'Neu laden',
+          label: t('repair_reload'),
           onClick: () => window.location.reload(),
         },
         duration: TOAST_DURATION_MS,
@@ -156,10 +171,10 @@ export function ErrorBusProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    toast.error('Etwas ist schiefgelaufen', {
-      description: err.detail || err.message || 'Ein Problem wurde entdeckt. Das Dashboard kann automatisch repariert werden.',
+    toast.error(t('repair_error_title'), {
+      description: err.detail || err.message || t('toast_bug_desc'),
       action: {
-        label: 'Dashboard reparieren',
+        label: t('repair_text'),
         onClick: () => { void runRepair(err); },
       },
       duration: TOAST_DURATION_MS,
@@ -173,6 +188,17 @@ export function ErrorBusProvider({ children }: { children: ReactNode }) {
     };
     const onRejection = (e: PromiseRejectionEvent) => {
       const reason: unknown = e.reason;
+      // Aborted work is not failure. React 19's Navigation-API integration
+      // runs view transitions the browser may skip (reload mid-flight,
+      // rapid navigation) — the promise rejects with `AbortError:
+      // Transition was skipped`, uncaught by React. lib/sentry.ts filters
+      // this for the REPORT channel; this is the TOAST channel and needs
+      // its own filter, otherwise every skipped animation toasts a bug.
+      // Cancelled fetches reject with AbortError too — same verdict.
+      if (
+        (reason instanceof DOMException && reason.name === 'AbortError') ||
+        (reason instanceof Error && reason.message.includes('Transition was skipped'))
+      ) return;
       const message =
         reason instanceof Error ? reason.message :
         typeof reason === 'string' ? reason :
@@ -185,6 +211,18 @@ export function ErrorBusProvider({ children }: { children: ReactNode }) {
       });
     };
     const onError = (e: ErrorEvent) => {
+      // Browsers report a ResizeObserver callback that changed layout again
+      // in the same frame as a window `error` event — „ResizeObserver loop
+      // completed with undelivered notifications“ (Chrome, Safari) or „… loop
+      // limit exceeded“ (Firefox). It is a notice, not a failure: the
+      // observer simply delivers in the next frame, nothing is lost. Below
+      // 800 px the sidebar collapse and the measured stat cards trigger it,
+      // and every owner saw „Etwas ist schiefgelaufen · Dashboard reparieren“
+      // for it (issue 30.09.2026). The console keeps the trace for developers.
+      if (BENIGN_BROWSER_NOTICES.some(re => re.test(e.message ?? ''))) {
+        console.warn('[ErrorBus] benign browser notice, not shown:', e.message);
+        return;
+      }
       emit({
         source: 'js',
         message: e.message,

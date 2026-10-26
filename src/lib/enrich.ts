@@ -26,20 +26,6 @@ export function enrichVerpackungstypen(
   }));
 }
 
-interface NachweiseMaps {
-  verpackungstypenMap: Map<string, Verpackungstypen>;
-}
-
-export function enrichNachweise(
-  nachweise: Nachweise[],
-  maps: NachweiseMaps
-): EnrichedNachweise[] {
-  return nachweise.map(r => ({
-    ...r,
-    verpackungstyp_refName: resolveDisplay(r.fields.verpackungstyp_ref, maps.verpackungstypenMap, 'verpackungs_id'),
-  }));
-}
-
 interface RegelstatusMaps {
   verpackungstypenMap: Map<string, Verpackungstypen>;
 }
@@ -51,6 +37,20 @@ export function enrichRegelstatus(
   return regelstatus.map(r => ({
     ...r,
     verpackungstyp_status_refName: resolveDisplay(r.fields.verpackungstyp_status_ref, maps.verpackungstypenMap, 'verpackungs_id'),
+  }));
+}
+
+interface NachweiseMaps {
+  verpackungstypenMap: Map<string, Verpackungstypen>;
+}
+
+export function enrichNachweise(
+  nachweise: Nachweise[],
+  maps: NachweiseMaps
+): EnrichedNachweise[] {
+  return nachweise.map(r => ({
+    ...r,
+    verpackungstyp_refName: resolveDisplay(r.fields.verpackungstyp_ref, maps.verpackungstypenMap, 'verpackungs_id'),
   }));
 }
 

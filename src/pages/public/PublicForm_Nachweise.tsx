@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/DatePicker';
 import { lookupKey } from '@/lib/formatters';
+import { tx } from '@/i18n';
 
 // Empty PROXY_BASE → relative URLs (dashboard and form-proxy share the domain).
 const PROXY_BASE = '';
@@ -23,7 +24,7 @@ async function submitPublicForm(fields: Record<string, unknown>, captchaToken: s
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(err || 'Submission failed');
+    throw new Error(err || tx('Submission failed'));
   }
   return res.json();
 }
@@ -82,7 +83,7 @@ export default function PublicFormNachweise() {
     e.preventDefault();
     const token = readCaptchaToken();
     if (!token) {
-      setError('Bitte warte auf die Spam-Prüfung und versuche es erneut.');
+      setError(tx('Bitte warte auf die Spam-Prüfung und versuche es erneut.'));
       return;
     }
     setSubmitting(true);
@@ -91,7 +92,7 @@ export default function PublicFormNachweise() {
       await submitPublicForm(cleanFields(fields), token);
       setSubmitted(true);
     } catch (err: any) {
-      setError(err.message || 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      setError(err.message || tx('Etwas ist schiefgelaufen. Bitte versuche es erneut.'));
     } finally {
       setSubmitting(false);
     }
@@ -106,10 +107,10 @@ export default function PublicFormNachweise() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold">Vielen Dank!</h2>
-          <p className="text-muted-foreground">Deine Eingabe wurde erfolgreich übermittelt.</p>
+          <h2 className="text-xl font-bold">{tx('Vielen Dank!')}</h2>
+          <p className="text-muted-foreground">{tx('Deine Eingabe wurde erfolgreich übermittelt.')}</p>
           <Button variant="outline" className="mt-4" onClick={() => { setSubmitted(false); setFields({}); }}>
-            Weitere Eingabe
+            {tx('Weitere Eingabe')}
           </Button>
         </div>
       </div>
@@ -120,12 +121,12 @@ export default function PublicFormNachweise() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Nachweise — Formular</h1>
+          <h1 className="text-2xl font-bold text-foreground">{tx('Nachweise — Formular')}</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5 bg-card rounded-xl border border-border p-6 shadow-md">
           <div className="space-y-2">
-            <Label htmlFor="dokumentart">Dokumentart</Label>
+            <Label htmlFor="dokumentart">{tx('Dokumentart')}</Label>
             <div role="radiogroup" className="flex flex-wrap gap-1.5">
               <button
                 type="button"
@@ -138,7 +139,7 @@ export default function PublicFormNachweise() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Zertifikat
+                {tx('Zertifikat')}
               </button>
               <button
                 type="button"
@@ -151,7 +152,7 @@ export default function PublicFormNachweise() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Laboranalyse
+                {tx('Laboranalyse')}
               </button>
               <button
                 type="button"
@@ -164,7 +165,7 @@ export default function PublicFormNachweise() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Gutachten
+                {tx('Gutachten')}
               </button>
               <button
                 type="button"
@@ -177,7 +178,7 @@ export default function PublicFormNachweise() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Sonstiges
+                {tx('Sonstiges')}
               </button>
               <button
                 type="button"
@@ -190,12 +191,12 @@ export default function PublicFormNachweise() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Prüfbericht
+                {tx('Prüfbericht')}
               </button>
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="aussteller">Aussteller</Label>
+            <Label htmlFor="aussteller">{tx('Aussteller')}</Label>
             <Input
               id="aussteller"
               placeholder=""
@@ -204,7 +205,7 @@ export default function PublicFormNachweise() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ausstellungsdatum">Ausstellungsdatum</Label>
+            <Label htmlFor="ausstellungsdatum">{tx('Ausstellungsdatum')}</Label>
             <DatePicker
               id="ausstellungsdatum"
               placeholder=""
@@ -214,7 +215,7 @@ export default function PublicFormNachweise() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="gueltig_bis">Gültig bis</Label>
+            <Label htmlFor="gueltig_bis">{tx('Gültig bis')}</Label>
             <DatePicker
               id="gueltig_bis"
               placeholder=""
@@ -224,7 +225,7 @@ export default function PublicFormNachweise() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="dokument_url">Dokument-Link (URL)</Label>
+            <Label htmlFor="dokument_url">{tx('Dokument-Link (URL)')}</Label>
             <Input
               id="dokument_url"
               value={fields.dokument_url ?? ''}
@@ -232,7 +233,7 @@ export default function PublicFormNachweise() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="nachweis_hinweise">Hinweise / Anmerkungen</Label>
+            <Label htmlFor="nachweis_hinweise">{tx('Hinweise / Anmerkungen')}</Label>
             <Textarea
               id="nachweis_hinweise"
               placeholder=""
@@ -256,12 +257,12 @@ export default function PublicFormNachweise() {
           )}
 
           <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? 'Wird gesendet...' : 'Absenden'}
+            {submitting ? tx('Wird gesendet...') : tx('Absenden')}
           </Button>
         </form>
 
         <p className="text-xs text-muted-foreground text-center mt-4">
-          Powered by Klar
+          {tx('Powered by Klar')}
         </p>
       </div>
     </div>

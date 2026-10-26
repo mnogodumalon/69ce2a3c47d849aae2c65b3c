@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/DatePicker';
 import { lookupKey, lookupKeys } from '@/lib/formatters';
+import { tx } from '@/i18n';
 
 // Empty PROXY_BASE → relative URLs (dashboard and form-proxy share the domain).
 const PROXY_BASE = '';
@@ -24,7 +25,7 @@ async function submitPublicForm(fields: Record<string, unknown>, captchaToken: s
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(err || 'Submission failed');
+    throw new Error(err || tx('Submission failed'));
   }
   return res.json();
 }
@@ -83,7 +84,7 @@ export default function PublicFormRegelstatus() {
     e.preventDefault();
     const token = readCaptchaToken();
     if (!token) {
-      setError('Bitte warte auf die Spam-Prüfung und versuche es erneut.');
+      setError(tx('Bitte warte auf die Spam-Prüfung und versuche es erneut.'));
       return;
     }
     setSubmitting(true);
@@ -92,7 +93,7 @@ export default function PublicFormRegelstatus() {
       await submitPublicForm(cleanFields(fields), token);
       setSubmitted(true);
     } catch (err: any) {
-      setError(err.message || 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      setError(err.message || tx('Etwas ist schiefgelaufen. Bitte versuche es erneut.'));
     } finally {
       setSubmitting(false);
     }
@@ -107,10 +108,10 @@ export default function PublicFormRegelstatus() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold">Vielen Dank!</h2>
-          <p className="text-muted-foreground">Deine Eingabe wurde erfolgreich übermittelt.</p>
+          <h2 className="text-xl font-bold">{tx('Vielen Dank!')}</h2>
+          <p className="text-muted-foreground">{tx('Deine Eingabe wurde erfolgreich übermittelt.')}</p>
           <Button variant="outline" className="mt-4" onClick={() => { setSubmitted(false); setFields({}); }}>
-            Weitere Eingabe
+            {tx('Weitere Eingabe')}
           </Button>
         </div>
       </div>
@@ -121,12 +122,12 @@ export default function PublicFormRegelstatus() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Regelstatus — Formular</h1>
+          <h1 className="text-2xl font-bold text-foreground">{tx('Regelstatus — Formular')}</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5 bg-card rounded-xl border border-border p-6 shadow-md">
           <div className="space-y-2">
-            <Label htmlFor="konformitaetsstatus">PPWR-Konformitätsstatus</Label>
+            <Label htmlFor="konformitaetsstatus">{tx('PPWR-Konformitätsstatus')}</Label>
             <div role="radiogroup" className="flex flex-wrap gap-1.5">
               <button
                 type="button"
@@ -139,7 +140,7 @@ export default function PublicFormRegelstatus() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Konform
+                {tx('Konform')}
               </button>
               <button
                 type="button"
@@ -152,7 +153,7 @@ export default function PublicFormRegelstatus() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Kritisch
+                {tx('Kritisch')}
               </button>
               <button
                 type="button"
@@ -165,23 +166,23 @@ export default function PublicFormRegelstatus() {
                     : 'bg-background text-foreground border-input hover:bg-accent'
                 }`}
               >
-                Nicht konform
+                {tx('Nicht konform')}
               </button>
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="datanluecke_flag">Datenlücke vorhanden</Label>
+            <Label htmlFor="datanluecke_flag">{tx('Datenlücke vorhanden')}</Label>
             <div className="flex items-center gap-2 pt-1">
               <Checkbox
                 id="datanluecke_flag"
                 checked={!!fields.datanluecke_flag}
                 onCheckedChange={(v) => setFields(f => ({ ...f, datanluecke_flag: !!v }))}
               />
-              <Label htmlFor="datanluecke_flag" className="font-normal">Datenlücke vorhanden</Label>
+              <Label htmlFor="datanluecke_flag" className="font-normal">{tx('Datenlücke vorhanden')}</Label>
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="problemfelder">Erkannte Problemfelder</Label>
+            <Label htmlFor="problemfelder">{tx('Erkannte Problemfelder')}</Label>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -195,7 +196,7 @@ export default function PublicFormRegelstatus() {
                     });
                   }}
                 />
-                <Label htmlFor="problemfelder_rezyklatquote_zu_niedrig" className="font-normal">Rezyklatquote zu niedrig</Label>
+                <Label htmlFor="problemfelder_rezyklatquote_zu_niedrig" className="font-normal">{tx('Rezyklatquote zu niedrig')}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -209,7 +210,7 @@ export default function PublicFormRegelstatus() {
                     });
                   }}
                 />
-                <Label htmlFor="problemfelder_nicht_recyclingfaehig" className="font-normal">Nicht recyclingfähig</Label>
+                <Label htmlFor="problemfelder_nicht_recyclingfaehig" className="font-normal">{tx('Nicht recyclingfähig')}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -223,7 +224,7 @@ export default function PublicFormRegelstatus() {
                     });
                   }}
                 />
-                <Label htmlFor="problemfelder_kennzeichnung_unvollstaendig" className="font-normal">Kennzeichnung unvollständig</Label>
+                <Label htmlFor="problemfelder_kennzeichnung_unvollstaendig" className="font-normal">{tx('Kennzeichnung unvollständig')}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -237,7 +238,7 @@ export default function PublicFormRegelstatus() {
                     });
                   }}
                 />
-                <Label htmlFor="problemfelder_mehrwegpflicht_verletzt" className="font-normal">Mehrwegpflicht verletzt (Einwegverpackung)</Label>
+                <Label htmlFor="problemfelder_mehrwegpflicht_verletzt" className="font-normal">{tx('Mehrwegpflicht verletzt (Einwegverpackung)')}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -251,7 +252,7 @@ export default function PublicFormRegelstatus() {
                     });
                   }}
                 />
-                <Label htmlFor="problemfelder_datanluecke" className="font-normal">Datenlücke</Label>
+                <Label htmlFor="problemfelder_datanluecke" className="font-normal">{tx('Datenlücke')}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -265,12 +266,12 @@ export default function PublicFormRegelstatus() {
                     });
                   }}
                 />
-                <Label htmlFor="problemfelder_sonstiges" className="font-normal">Sonstiges</Label>
+                <Label htmlFor="problemfelder_sonstiges" className="font-normal">{tx('Sonstiges')}</Label>
               </div>
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="status_kommentar">Kommentar / Maßnahmenempfehlung</Label>
+            <Label htmlFor="status_kommentar">{tx('Kommentar / Maßnahmenempfehlung')}</Label>
             <Textarea
               id="status_kommentar"
               placeholder=""
@@ -280,7 +281,7 @@ export default function PublicFormRegelstatus() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bewertungsdatum">Datum der Bewertung</Label>
+            <Label htmlFor="bewertungsdatum">{tx('Datum der Bewertung')}</Label>
             <DatePicker
               id="bewertungsdatum"
               placeholder=""
@@ -290,7 +291,7 @@ export default function PublicFormRegelstatus() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bewerter_vorname">Vorname bewertende Person</Label>
+            <Label htmlFor="bewerter_vorname">{tx('Vorname bewertende Person')}</Label>
             <Input
               id="bewerter_vorname"
               placeholder=""
@@ -299,7 +300,7 @@ export default function PublicFormRegelstatus() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bewerter_nachname">Nachname bewertende Person</Label>
+            <Label htmlFor="bewerter_nachname">{tx('Nachname bewertende Person')}</Label>
             <Input
               id="bewerter_nachname"
               placeholder=""
@@ -308,7 +309,7 @@ export default function PublicFormRegelstatus() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bewerter_abteilung">Abteilung</Label>
+            <Label htmlFor="bewerter_abteilung">{tx('Abteilung')}</Label>
             <Input
               id="bewerter_abteilung"
               placeholder=""
@@ -331,12 +332,12 @@ export default function PublicFormRegelstatus() {
           )}
 
           <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? 'Wird gesendet...' : 'Absenden'}
+            {submitting ? tx('Wird gesendet...') : tx('Absenden')}
           </Button>
         </form>
 
         <p className="text-xs text-muted-foreground text-center mt-4">
-          Powered by Klar
+          {tx('Powered by Klar')}
         </p>
       </div>
     </div>

@@ -1,9 +1,12 @@
 // AUTOMATICALLY GENERATED SERVICE
 import { APP_IDS, LOOKUP_OPTIONS, FIELD_TYPES } from '@/types/app';
-import type { Unternehmen, Verpackungstypen, Nachweise, Regelstatus, Kennzahlen, CreateUnternehmen, CreateVerpackungstypen, CreateNachweise, CreateRegelstatus, CreateKennzahlen, Attachment, AttachmentInput } from '@/types/app';
+import { ensureUploadableImage } from '@/lib/ai';
+import { REST_URL, restFetch } from '@/lib/origin';
+import type { Verpackungstypen, Unternehmen, Regelstatus, Nachweise, Kennzahlen, CreateVerpackungstypen, CreateUnternehmen, CreateRegelstatus, CreateNachweise, CreateKennzahlen } from '@/types/app';
 
-// Base Configuration
-const API_BASE_URL = 'https://my.living-apps.de/rest';
+// Base Configuration — the host is a RUNTIME fact (lib/origin.ts):
+// a bundle copied to another LA instance must talk to THAT instance.
+const API_BASE_URL = REST_URL;
 
 // --- HELPER FUNCTIONS ---
 export function extractRecordId(url: unknown): string | null {
@@ -13,20 +16,161 @@ export function extractRecordId(url: unknown): string | null {
   return match ? match[1] : null;
 }
 
-export function createRecordUrl(appId: string, recordId: string): string {
-  return `https://my.living-apps.de/rest/apps/${appId}/records/${recordId}`;
+// multipleapplookup form-state is Array<URL>. The MultiCombobox picker
+// works on record-ids; this helper maps a raw form value (which may be
+// undefined, null, a single URL string from a legacy single-Combobox
+// render, or the expected URL array) to a clean string[] of ids.
+export function extractRecordIds(urls: unknown): string[] {
+  if (!urls) return [];
+  const arr = Array.isArray(urls) ? urls : [urls];
+  const out: string[] = [];
+  for (const u of arr) {
+    const id = extractRecordId(u);
+    if (id) out.push(id);
+  }
+  return out;
 }
 
-async function callApi(method: string, endpoint: string, data?: any) {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',  // Nutze Session Cookies für Auth
-    body: data ? JSON.stringify(data) : undefined
-  });
+export function createRecordUrl(appId: string, recordId: string): string {
+  return `${API_BASE_URL}/apps/${appId}/records/${recordId}`;
+}
+
+export class LivingAppsApiError extends Error {
+  status: number;
+  type?: string;
+  /** Stable error type identifier — the last path segment of `type`
+   *  (v1: `…/rest/v1/docs/errors/<id>`, e.g. `no_app_permission`). */
+  code?: string;
+  control_identifier?: string;
+  control_type?: string;
+  field_type?: string;
+  detail?: string;
+  constructor(message: string, status: number, raw?: Record<string, unknown>) {
+    super(message);
+    this.name = 'LivingAppsApiError';
+    this.status = status;
+    if (raw) {
+      this.type = typeof raw.type === 'string' ? raw.type : undefined;
+      this.code = this.type ? this.type.replace(/\/+$/, '').split('/').pop() : undefined;
+      this.control_identifier = typeof raw.control_identifier === 'string' ? raw.control_identifier : undefined;
+      this.control_type = typeof raw.control_type === 'string' ? raw.control_type : undefined;
+      this.field_type = typeof raw.field_type === 'string' ? raw.field_type : undefined;
+      this.detail = typeof raw.detail === 'string' ? raw.detail : undefined;
+    }
+  }
+}
+
+async function parseErrorBody(response: Response): Promise<{ message: string; raw?: Record<string, unknown> }> {
+  const text = await response.text();
+  if (!text) return { message: `HTTP ${response.status}` };
+  try {
+    const raw = JSON.parse(text);
+    if (raw && typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>;
+      const message = typeof obj.detail === 'string' ? obj.detail
+        : typeof obj.title === 'string' ? obj.title
+        : text;
+      return { message, raw: obj };
+    }
+  } catch { /* fall through to text */ }
+  return { message: text };
+}
+
+export interface CallApiOptions {
+  /** Skip errorbus dispatch for expected failures (e.g. optional-param 404s). */
+  silent?: boolean;
+  /** Abort the request (a keystroke replacing the previous search). */
+  signal?: AbortSignal;
+}
+
+/** Query options of GET /apps/{id}/records — filter/orderby are vSQL (see the journey layer's
+ *  buildSearchFilter; never concatenate user input into them yourself). */
+export interface RecordQuery {
+  filter?: string;
+  orderby?: string[];
+  limit?: number;
+  offset?: number;
+  /** Field projection (`field=` repeated). The record's `fields` then holds ONLY these keys. */
+  fields?: string[];
+  signal?: AbortSignal;
+}
+// URLSearchParams encodes spaces as `+` — the API accepts it (verified live
+// 2026-09-02: orderby=r.v_nachname+asc → 200, sorted; filter with + → 200).
+export function recordQueryString(q: RecordQuery): string {
+  const p = new URLSearchParams();
+  if (q.filter) p.set('filter', q.filter);
+  for (const o of q.orderby ?? []) p.append('orderby', o);
+  for (const f of q.fields ?? []) p.append('field', f);
+  if (q.limit !== undefined) p.set('limit', String(Math.max(1, Math.floor(q.limit))));
+  if (q.offset !== undefined) p.set('offset', String(Math.max(0, Math.floor(q.offset))));
+  const s = p.toString();
+  return s ? `?${s}` : '';
+}
+/** `[[n]]` from aggregate_records?value=count() -> n; `[]` -> 0; anything else -> 0 (never NaN). */
+export function parseAggregateCount(data: unknown): number {
+  if (!Array.isArray(data)) return 0;
+  if (data.length === 0) return 0;
+  const first = data[0];
+  const n = Array.isArray(first) ? Number(first[0]) : Number(first);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** What the create and update helpers resolve to. Same `record_id`
+ *  the read helpers expose, so the whole family behaves alike — the
+ *  raw REST answer only
+ *  carries `id`, and code that guessed (e.g. Object.keys(res)[0]) built
+ *  `/records/id` and got a 400 on the next write. */
+export interface MutationResult {
+  record_id: string;
+  id: string;
+  fields: Record<string, any>;
+  [key: string]: any;
+}
+
+async function callApi(method: string, endpoint: string, data?: any, options?: CallApiOptions) {
+  const silent = options?.silent === true;
+  let response: Response;
+  try {
+    response = await restFetch(`${API_BASE_URL}${endpoint}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',  // Nutze Session Cookies für Auth
+      signal: options?.signal,
+      body: data ? JSON.stringify(data) : undefined
+    });
+  } catch (netErr) {
+    // A search the user typed past is cancelled, not broken — it must not
+    // raise an error toast on its way out.
+    if (netErr instanceof Error && netErr.name === 'AbortError') throw netErr;
+    const message = netErr instanceof Error ? netErr.message : String(netErr);
+    if (!silent) {
+      window.dispatchEvent(new CustomEvent('errorbus:emit', { detail: {
+        source: 'network', message, status: 0,
+      } }));
+    }
+    throw netErr;
+  }
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403) window.dispatchEvent(new Event('auth-error'));
-    throw new Error(await response.text());
+    // 401 = not signed in → the login screen, never the errorbus (repair can't fix auth).
+    // 403 = signed in, but this list is not theirs to read or write: a notice,
+    // the page stays (05.10.2026 — it used to say „not logged in“ and blank everything).
+    const isAuthError = response.status === 401;
+    if (isAuthError) window.dispatchEvent(new Event('auth-error'));
+    const { message, raw } = await parseErrorBody(response);
+    const err = new LivingAppsApiError(message, response.status, raw);
+    if (!silent && !isAuthError) {
+      window.dispatchEvent(new CustomEvent('errorbus:emit', { detail: {
+        source: 'api',
+        status: err.status,
+        type: err.type,
+        control_identifier: err.control_identifier,
+        control_type: err.control_type,
+        field_type: err.field_type,
+        detail: err.detail,
+        message: err.message,
+      } }));
+    }
+    throw err;
   }
   // DELETE returns often empty body or simple status
   if (method === 'DELETE') return true;
@@ -35,32 +179,47 @@ async function callApi(method: string, endpoint: string, data?: any) {
 
 /** Upload a file to LivingApps. Returns the file URL for use in record fields. */
 export async function uploadFile(file: File | Blob, filename?: string): Promise<string> {
+  // HEIC/HEIF (iPhone photos) crash the server-side image decoder (500).
+  // Convert to JPEG in the browser BEFORE upload — every upload path routes
+  // through here, so this one guard covers form fields AND attachments.
+  if (file instanceof File) file = await ensureUploadableImage(file);
   const formData = new FormData();
   formData.append('file', file, filename ?? (file instanceof File ? file.name : 'upload'));
-  const res = await fetch(`${API_BASE_URL}/files`, {
+  const res = await restFetch(`${API_BASE_URL}/files`, {
     method: 'POST',
     credentials: 'include',
     body: formData,
   });
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) window.dispatchEvent(new Event('auth-error'));
+    if (res.status === 401) window.dispatchEvent(new Event('auth-error'));
+    else if (res.status === 403) window.dispatchEvent(new CustomEvent('errorbus:emit', { detail: {
+      source: 'api', status: 403, message: 'File upload failed: 403',
+    } }));
     throw new Error(`File upload failed: ${res.status}`);
   }
   const data = await res.json();
   return data.url;
 }
 
-export async function getRecordAttachments(appId: string, recordId: string): Promise<Attachment[]> {
-  const data = await callApi('GET', `/apps/${appId}/records/${recordId}/attachments`);
-  return Array.isArray(data) ? data : Object.values(data ?? {}) as Attachment[];
+// --- ATTACHMENT API ---
+// Record-attachments: file/note/url/json blobs attached to a single record.
+// `getAttachments` returns a dict keyed by attachment id; we flatten to an array.
+export async function getRecordAttachments(appId: string, recordId: string) {
+  const data = await callApi('GET', `/apps/${appId}/records/${recordId}/attachments`, undefined, { silent: true }).catch(() => ({}));
+  if (!data || typeof data !== 'object') return [] as import('@/types/app').Attachment[];
+  return Object.entries(data).map(([id, att]) => ({ id, ...(att as Record<string, unknown>) })) as import('@/types/app').Attachment[];
 }
 
-export async function createRecordAttachment(appId: string, recordId: string, input: AttachmentInput): Promise<Attachment> {
-  return callApi('POST', `/apps/${appId}/records/${recordId}/attachments`, input);
+export async function createRecordAttachment(appId: string, recordId: string, input: import('@/types/app').AttachmentInput) {
+  return callApi('POST', `/apps/${appId}/records/${recordId}/attachments`, input) as Promise<import('@/types/app').Attachment>;
 }
 
-export async function deleteRecordAttachment(appId: string, recordId: string, attachmentId: string): Promise<void> {
-  await callApi('DELETE', `/apps/${appId}/records/${recordId}/attachments/${attachmentId}`);
+export async function updateRecordAttachment(appId: string, recordId: string, attachmentId: string, input: Partial<import('@/types/app').AttachmentInput>) {
+  return callApi('PATCH', `/apps/${appId}/records/${recordId}/attachments/${attachmentId}`, input) as Promise<import('@/types/app').Attachment>;
+}
+
+export async function deleteRecordAttachment(appId: string, recordId: string, attachmentId: string) {
+  return callApi('DELETE', `/apps/${appId}/records/${recordId}/attachments/${attachmentId}`);
 }
 
 function enrichLookupFields<T extends { fields: Record<string, unknown> }>(
@@ -89,12 +248,85 @@ function enrichLookupFields<T extends { fields: Record<string, unknown> }>(
   });
 }
 
+/** A textarea that HOLDS A LIST but was typed on one line.
+ *
+ *  Rendering such a field as tiles/bullets is the natural thing to do, and
+ *  the natural way to write it is `value.split('\n')` — one item per line
+ *  is the convention every form implies. Owners type differently though:
+ *  a live landing page collapsed five services into ONE tile because the
+ *  record held 'Tagesbetreuung, Übernachtung, …' without a single line
+ *  break. Normalizing HERE makes that natural split correct whatever was
+ *  typed, instead of asking every page to re-derive the heuristic.
+ *
+ *  Deliberately conservative — prose must survive untouched:
+ *    · already has line breaks  → left alone (the author's own structure)
+ *    · ; • · |                  → unambiguous separators, 2 parts suffice
+ *    · commas                   → only with 3+ parts that all read like
+ *                                 labels: short, at most four words, no
+ *                                 sentence punctuation. A prose clause like
+ *                                 "Katzen und Kleintiere aller Rassen" is
+ *                                 short enough but not wordy-short.
+ *  Anything else stays as it is, so a wrong guess degrades to today's
+ *  behaviour (one item), never to mangled prose. */
+const LIST_LABEL_MAX = 40;
+const LIST_LABEL_MAX_WORDS = 4;
+function listTextToLines(text: string): string {
+  if (!text || /\r?\n/.test(text)) return text;
+  const bulleted = text.split(/\s*[;•·|]\s*/).map(s => s.trim()).filter(Boolean);
+  if (bulleted.length >= 2) return bulleted.join('\n');
+  const parts = text.split(/\s*,\s*/).map(s => s.trim()).filter(Boolean);
+  const looksLikeLabels = parts.length >= 3 && parts.every(p =>
+    p.length <= LIST_LABEL_MAX
+    && p.split(/\s+/).length <= LIST_LABEL_MAX_WORDS
+    && !/[.!?:]$/.test(p));
+  return looksLikeLabels ? parts.join('\n') : text;
+}
+
+function normalizeListTextareas<T extends { fields: Record<string, unknown> }>(
+  records: T[], entityKey: string
+): T[] {
+  const types = FIELD_TYPES[entityKey];
+  if (!types) return records;
+  const areas = Object.keys(types).filter(k => types[k] === 'string/textarea');
+  if (areas.length === 0) return records;
+  return records.map(r => {
+    let touched = false;
+    const fields = { ...r.fields };
+    for (const key of areas) {
+      const val = fields[key];
+      if (typeof val !== 'string') continue;
+      const next = listTextToLines(val);
+      if (next !== val) { fields[key] = next; touched = true; }
+    }
+    return touched ? ({ ...r, fields } as T) : r;
+  });
+}
+
+/** The one post-processing step every READ goes through: lookup objects
+ *  attached, list-ish textareas line-broken. Read helpers call this, not
+ *  the individual passes. */
+function hydrateRecords<T extends { fields: Record<string, unknown> }>(
+  records: T[], entityKey: string
+): T[] {
+  return normalizeListTextareas(enrichLookupFields(records, entityKey), entityKey);
+}
+
 /** Normalize fields for API writes: strip lookup objects to keys, fix date formats. */
 export function cleanFieldsForApi(
   fields: Record<string, unknown>,
   entityKey: string
 ): Record<string, unknown> {
   const clean: Record<string, unknown> = { ...fields };
+  // Strip virtual / unknown keys before they hit the API. Sub-agent invents
+  // computed-only keys (e.g. `_netto`, `_bestellung_gesamtbetrag`) for the
+  // 'Berechnungen' display, and a leaky submit-backfill would otherwise send
+  // them to the Living-Apps backend which rejects with 'field does not exist'.
+  const known = FIELD_TYPES[entityKey];
+  if (known) {
+    for (const k of Object.keys(clean)) {
+      if (!(k in known)) delete clean[k];
+    }
+  }
   for (const [k, v] of Object.entries(clean)) {
     if (v && typeof v === 'object' && !Array.isArray(v) && 'key' in v) clean[k] = (v as any).key;
     if (Array.isArray(v)) clean[k] = v.map((item: any) => item && typeof item === 'object' && 'key' in item ? item.key : item);
@@ -178,7 +410,9 @@ export async function getAppGroups(): Promise<AppGroupInfo[]> {
         id: g.id,
         name: g.name,
         image: g.image ?? null,
-        createdat: g.createdat ?? '',
+        // API field is created_at (snake_case) — the old camelCase read
+        // left every group '', silently disabling the newest-first sort.
+        createdat: g.created_at ?? g.createdat ?? '',
         href: `/gateway/apps/${firstAppId}?template=list_page`,
         _firstAppId: firstAppId,
       };
@@ -187,7 +421,7 @@ export async function getAppGroups(): Promise<AppGroupInfo[]> {
 
   // Check which appgroups have a deployed dashboard via app params
   const paramChecks = await Promise.allSettled(
-    groups.map(g => callApi('GET', `/apps/${(g as any)._firstAppId}/params/la_page_header_additional_url`))
+    groups.map(g => callApi('GET', `/apps/${(g as any)._firstAppId}/params/la_page_header_additional_url`, undefined, { silent: true }))
   );
   paramChecks.forEach((result, i) => {
     if (result.status !== 'fulfilled' || !result.value) return;
@@ -205,116 +439,191 @@ export async function getAppGroups(): Promise<AppGroupInfo[]> {
 }
 
 export class LivingAppsService {
-  // --- UNTERNEHMEN ---
-  static async getUnternehmen(): Promise<Unternehmen[]> {
-    const data = await callApi('GET', `/apps/${APP_IDS.UNTERNEHMEN}/records`);
-    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
-      record_id: id, ...rec
-    })) as Unternehmen[];
-    return enrichLookupFields(records, 'unternehmen');
-  }
-  static async getUnternehmenEntry(id: string): Promise<Unternehmen | undefined> {
-    const data = await callApi('GET', `/apps/${APP_IDS.UNTERNEHMEN}/records/${id}`);
-    const record = { record_id: data.id, ...data } as Unternehmen;
-    return enrichLookupFields([record], 'unternehmen')[0];
-  }
-  static async createUnternehmenEntry(fields: CreateUnternehmen) {
-    return callApi('POST', `/apps/${APP_IDS.UNTERNEHMEN}/records`, { fields: cleanFieldsForApi(fields as any, 'unternehmen') });
-  }
-  static async updateUnternehmenEntry(id: string, fields: Partial<CreateUnternehmen>) {
-    return callApi('PATCH', `/apps/${APP_IDS.UNTERNEHMEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'unternehmen') });
-  }
-  static async deleteUnternehmenEntry(id: string) {
-    return callApi('DELETE', `/apps/${APP_IDS.UNTERNEHMEN}/records/${id}`);
-  }
-
   // --- VERPACKUNGSTYPEN ---
   static async getVerpackungstypen(): Promise<Verpackungstypen[]> {
     const data = await callApi('GET', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records`);
     const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
-      record_id: id, ...rec
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
     })) as Verpackungstypen[];
-    return enrichLookupFields(records, 'verpackungstypen');
+    return hydrateRecords(records, 'verpackungstypen');
+  }
+  static async queryVerpackungstypen(q: RecordQuery = {}): Promise<Verpackungstypen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records${recordQueryString(q)}`, undefined, { signal: q.signal });
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Verpackungstypen[];
+    return hydrateRecords(records, 'verpackungstypen');
+  }
+  static async countVerpackungstypen(filter?: string, signal?: AbortSignal): Promise<number> {
+    const data = await callApi('GET', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/aggregate_records${recordQueryString({ filter })}${filter ? '&' : '?'}value=count()`, undefined, { signal, silent: true });
+    return parseAggregateCount(data);
   }
   static async getVerpackungstypenEntry(id: string): Promise<Verpackungstypen | undefined> {
     const data = await callApi('GET', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records/${id}`);
-    const record = { record_id: data.id, ...data } as Verpackungstypen;
-    return enrichLookupFields([record], 'verpackungstypen')[0];
+    const record = { record_id: data.id, ...data, createdat: data.created_at ?? '', updatedat: data.updated_at ?? null } as Verpackungstypen;
+    return hydrateRecords([record], 'verpackungstypen')[0];
   }
-  static async createVerpackungstypenEntry(fields: CreateVerpackungstypen) {
-    return callApi('POST', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records`, { fields: cleanFieldsForApi(fields as any, 'verpackungstypen') });
+  static async createVerpackungstypenEntry(fields: CreateVerpackungstypen): Promise<MutationResult> {
+    const data = await callApi('POST', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records`, { fields: cleanFieldsForApi(fields as any, 'verpackungstypen') });
+    return { ...data, record_id: data.id };
   }
-  static async updateVerpackungstypenEntry(id: string, fields: Partial<CreateVerpackungstypen>) {
-    return callApi('PATCH', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'verpackungstypen') });
+  static async updateVerpackungstypenEntry(id: string, fields: Partial<CreateVerpackungstypen>): Promise<MutationResult> {
+    const data = await callApi('PATCH', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'verpackungstypen') });
+    return { ...data, record_id: data.id };
   }
   static async deleteVerpackungstypenEntry(id: string) {
     return callApi('DELETE', `/apps/${APP_IDS.VERPACKUNGSTYPEN}/records/${id}`);
   }
 
-  // --- NACHWEISE ---
-  static async getNachweise(): Promise<Nachweise[]> {
-    const data = await callApi('GET', `/apps/${APP_IDS.NACHWEISE}/records`);
+  // --- UNTERNEHMEN ---
+  static async getUnternehmen(): Promise<Unternehmen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.UNTERNEHMEN}/records`);
     const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
-      record_id: id, ...rec
-    })) as Nachweise[];
-    return enrichLookupFields(records, 'nachweise');
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Unternehmen[];
+    return hydrateRecords(records, 'unternehmen');
   }
-  static async getNachweiseEntry(id: string): Promise<Nachweise | undefined> {
-    const data = await callApi('GET', `/apps/${APP_IDS.NACHWEISE}/records/${id}`);
-    const record = { record_id: data.id, ...data } as Nachweise;
-    return enrichLookupFields([record], 'nachweise')[0];
+  static async queryUnternehmen(q: RecordQuery = {}): Promise<Unternehmen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.UNTERNEHMEN}/records${recordQueryString(q)}`, undefined, { signal: q.signal });
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Unternehmen[];
+    return hydrateRecords(records, 'unternehmen');
   }
-  static async createNachweiseEntry(fields: CreateNachweise) {
-    return callApi('POST', `/apps/${APP_IDS.NACHWEISE}/records`, { fields: cleanFieldsForApi(fields as any, 'nachweise') });
+  static async countUnternehmen(filter?: string, signal?: AbortSignal): Promise<number> {
+    const data = await callApi('GET', `/apps/${APP_IDS.UNTERNEHMEN}/aggregate_records${recordQueryString({ filter })}${filter ? '&' : '?'}value=count()`, undefined, { signal, silent: true });
+    return parseAggregateCount(data);
   }
-  static async updateNachweiseEntry(id: string, fields: Partial<CreateNachweise>) {
-    return callApi('PATCH', `/apps/${APP_IDS.NACHWEISE}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'nachweise') });
+  static async getUnternehmenEntry(id: string): Promise<Unternehmen | undefined> {
+    const data = await callApi('GET', `/apps/${APP_IDS.UNTERNEHMEN}/records/${id}`);
+    const record = { record_id: data.id, ...data, createdat: data.created_at ?? '', updatedat: data.updated_at ?? null } as Unternehmen;
+    return hydrateRecords([record], 'unternehmen')[0];
   }
-  static async deleteNachweiseEntry(id: string) {
-    return callApi('DELETE', `/apps/${APP_IDS.NACHWEISE}/records/${id}`);
+  static async createUnternehmenEntry(fields: CreateUnternehmen): Promise<MutationResult> {
+    const data = await callApi('POST', `/apps/${APP_IDS.UNTERNEHMEN}/records`, { fields: cleanFieldsForApi(fields as any, 'unternehmen') });
+    return { ...data, record_id: data.id };
+  }
+  static async updateUnternehmenEntry(id: string, fields: Partial<CreateUnternehmen>): Promise<MutationResult> {
+    const data = await callApi('PATCH', `/apps/${APP_IDS.UNTERNEHMEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'unternehmen') });
+    return { ...data, record_id: data.id };
+  }
+  static async deleteUnternehmenEntry(id: string) {
+    return callApi('DELETE', `/apps/${APP_IDS.UNTERNEHMEN}/records/${id}`);
   }
 
   // --- REGELSTATUS ---
   static async getRegelstatus(): Promise<Regelstatus[]> {
     const data = await callApi('GET', `/apps/${APP_IDS.REGELSTATUS}/records`);
     const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
-      record_id: id, ...rec
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
     })) as Regelstatus[];
-    return enrichLookupFields(records, 'regelstatus');
+    return hydrateRecords(records, 'regelstatus');
+  }
+  static async queryRegelstatus(q: RecordQuery = {}): Promise<Regelstatus[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.REGELSTATUS}/records${recordQueryString(q)}`, undefined, { signal: q.signal });
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Regelstatus[];
+    return hydrateRecords(records, 'regelstatus');
+  }
+  static async countRegelstatus(filter?: string, signal?: AbortSignal): Promise<number> {
+    const data = await callApi('GET', `/apps/${APP_IDS.REGELSTATUS}/aggregate_records${recordQueryString({ filter })}${filter ? '&' : '?'}value=count()`, undefined, { signal, silent: true });
+    return parseAggregateCount(data);
   }
   static async getRegelstatu(id: string): Promise<Regelstatus | undefined> {
     const data = await callApi('GET', `/apps/${APP_IDS.REGELSTATUS}/records/${id}`);
-    const record = { record_id: data.id, ...data } as Regelstatus;
-    return enrichLookupFields([record], 'regelstatus')[0];
+    const record = { record_id: data.id, ...data, createdat: data.created_at ?? '', updatedat: data.updated_at ?? null } as Regelstatus;
+    return hydrateRecords([record], 'regelstatus')[0];
   }
-  static async createRegelstatu(fields: CreateRegelstatus) {
-    return callApi('POST', `/apps/${APP_IDS.REGELSTATUS}/records`, { fields: cleanFieldsForApi(fields as any, 'regelstatus') });
+  static async createRegelstatu(fields: CreateRegelstatus): Promise<MutationResult> {
+    const data = await callApi('POST', `/apps/${APP_IDS.REGELSTATUS}/records`, { fields: cleanFieldsForApi(fields as any, 'regelstatus') });
+    return { ...data, record_id: data.id };
   }
-  static async updateRegelstatu(id: string, fields: Partial<CreateRegelstatus>) {
-    return callApi('PATCH', `/apps/${APP_IDS.REGELSTATUS}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'regelstatus') });
+  static async updateRegelstatu(id: string, fields: Partial<CreateRegelstatus>): Promise<MutationResult> {
+    const data = await callApi('PATCH', `/apps/${APP_IDS.REGELSTATUS}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'regelstatus') });
+    return { ...data, record_id: data.id };
   }
   static async deleteRegelstatu(id: string) {
     return callApi('DELETE', `/apps/${APP_IDS.REGELSTATUS}/records/${id}`);
+  }
+
+  // --- NACHWEISE ---
+  static async getNachweise(): Promise<Nachweise[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.NACHWEISE}/records`);
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Nachweise[];
+    return hydrateRecords(records, 'nachweise');
+  }
+  static async queryNachweise(q: RecordQuery = {}): Promise<Nachweise[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.NACHWEISE}/records${recordQueryString(q)}`, undefined, { signal: q.signal });
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Nachweise[];
+    return hydrateRecords(records, 'nachweise');
+  }
+  static async countNachweise(filter?: string, signal?: AbortSignal): Promise<number> {
+    const data = await callApi('GET', `/apps/${APP_IDS.NACHWEISE}/aggregate_records${recordQueryString({ filter })}${filter ? '&' : '?'}value=count()`, undefined, { signal, silent: true });
+    return parseAggregateCount(data);
+  }
+  static async getNachweiseEntry(id: string): Promise<Nachweise | undefined> {
+    const data = await callApi('GET', `/apps/${APP_IDS.NACHWEISE}/records/${id}`);
+    const record = { record_id: data.id, ...data, createdat: data.created_at ?? '', updatedat: data.updated_at ?? null } as Nachweise;
+    return hydrateRecords([record], 'nachweise')[0];
+  }
+  static async createNachweiseEntry(fields: CreateNachweise): Promise<MutationResult> {
+    const data = await callApi('POST', `/apps/${APP_IDS.NACHWEISE}/records`, { fields: cleanFieldsForApi(fields as any, 'nachweise') });
+    return { ...data, record_id: data.id };
+  }
+  static async updateNachweiseEntry(id: string, fields: Partial<CreateNachweise>): Promise<MutationResult> {
+    const data = await callApi('PATCH', `/apps/${APP_IDS.NACHWEISE}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'nachweise') });
+    return { ...data, record_id: data.id };
+  }
+  static async deleteNachweiseEntry(id: string) {
+    return callApi('DELETE', `/apps/${APP_IDS.NACHWEISE}/records/${id}`);
   }
 
   // --- KENNZAHLEN ---
   static async getKennzahlen(): Promise<Kennzahlen[]> {
     const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/records`);
     const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
-      record_id: id, ...rec
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
     })) as Kennzahlen[];
-    return enrichLookupFields(records, 'kennzahlen');
+    return hydrateRecords(records, 'kennzahlen');
+  }
+  static async queryKennzahlen(q: RecordQuery = {}): Promise<Kennzahlen[]> {
+    const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/records${recordQueryString(q)}`, undefined, { signal: q.signal });
+    const records = Object.entries(data).map(([id, rec]: [string, any]) => ({
+      record_id: id, ...rec,
+      createdat: rec.created_at ?? '', updatedat: rec.updated_at ?? null,
+    })) as Kennzahlen[];
+    return hydrateRecords(records, 'kennzahlen');
+  }
+  static async countKennzahlen(filter?: string, signal?: AbortSignal): Promise<number> {
+    const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/aggregate_records${recordQueryString({ filter })}${filter ? '&' : '?'}value=count()`, undefined, { signal, silent: true });
+    return parseAggregateCount(data);
   }
   static async getKennzahlenEntry(id: string): Promise<Kennzahlen | undefined> {
     const data = await callApi('GET', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`);
-    const record = { record_id: data.id, ...data } as Kennzahlen;
-    return enrichLookupFields([record], 'kennzahlen')[0];
+    const record = { record_id: data.id, ...data, createdat: data.created_at ?? '', updatedat: data.updated_at ?? null } as Kennzahlen;
+    return hydrateRecords([record], 'kennzahlen')[0];
   }
-  static async createKennzahlenEntry(fields: CreateKennzahlen) {
-    return callApi('POST', `/apps/${APP_IDS.KENNZAHLEN}/records`, { fields: cleanFieldsForApi(fields as any, 'kennzahlen') });
+  static async createKennzahlenEntry(fields: CreateKennzahlen): Promise<MutationResult> {
+    const data = await callApi('POST', `/apps/${APP_IDS.KENNZAHLEN}/records`, { fields: cleanFieldsForApi(fields as any, 'kennzahlen') });
+    return { ...data, record_id: data.id };
   }
-  static async updateKennzahlenEntry(id: string, fields: Partial<CreateKennzahlen>) {
-    return callApi('PATCH', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'kennzahlen') });
+  static async updateKennzahlenEntry(id: string, fields: Partial<CreateKennzahlen>): Promise<MutationResult> {
+    const data = await callApi('PATCH', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`, { fields: cleanFieldsForApi(fields as any, 'kennzahlen') });
+    return { ...data, record_id: data.id };
   }
   static async deleteKennzahlenEntry(id: string) {
     return callApi('DELETE', `/apps/${APP_IDS.KENNZAHLEN}/records/${id}`);

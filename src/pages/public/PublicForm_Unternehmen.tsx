@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { tx } from '@/i18n';
 
 // Empty PROXY_BASE → relative URLs (dashboard and form-proxy share the domain).
 const PROXY_BASE = '';
@@ -21,7 +22,7 @@ async function submitPublicForm(fields: Record<string, unknown>, captchaToken: s
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(err || 'Submission failed');
+    throw new Error(err || tx('Submission failed'));
   }
   return res.json();
 }
@@ -80,7 +81,7 @@ export default function PublicFormUnternehmen() {
     e.preventDefault();
     const token = readCaptchaToken();
     if (!token) {
-      setError('Bitte warte auf die Spam-Prüfung und versuche es erneut.');
+      setError(tx('Bitte warte auf die Spam-Prüfung und versuche es erneut.'));
       return;
     }
     setSubmitting(true);
@@ -89,7 +90,7 @@ export default function PublicFormUnternehmen() {
       await submitPublicForm(cleanFields(fields), token);
       setSubmitted(true);
     } catch (err: any) {
-      setError(err.message || 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      setError(err.message || tx('Etwas ist schiefgelaufen. Bitte versuche es erneut.'));
     } finally {
       setSubmitting(false);
     }
@@ -104,10 +105,10 @@ export default function PublicFormUnternehmen() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold">Vielen Dank!</h2>
-          <p className="text-muted-foreground">Deine Eingabe wurde erfolgreich übermittelt.</p>
+          <h2 className="text-xl font-bold">{tx('Vielen Dank!')}</h2>
+          <p className="text-muted-foreground">{tx('Deine Eingabe wurde erfolgreich übermittelt.')}</p>
           <Button variant="outline" className="mt-4" onClick={() => { setSubmitted(false); setFields({}); }}>
-            Weitere Eingabe
+            {tx('Weitere Eingabe')}
           </Button>
         </div>
       </div>
@@ -118,12 +119,12 @@ export default function PublicFormUnternehmen() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Unternehmen — Formular</h1>
+          <h1 className="text-2xl font-bold text-foreground">{tx('Unternehmen — Formular')}</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5 bg-card rounded-xl border border-border p-6 shadow-md">
           <div className="space-y-2">
-            <Label htmlFor="firmenname">Firmenname</Label>
+            <Label htmlFor="firmenname">{tx('Firmenname')}</Label>
             <Input
               id="firmenname"
               placeholder=""
@@ -132,7 +133,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="strasse">Straße</Label>
+            <Label htmlFor="strasse">{tx('Straße')}</Label>
             <Input
               id="strasse"
               placeholder=""
@@ -141,7 +142,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="hausnummer">Hausnummer</Label>
+            <Label htmlFor="hausnummer">{tx('Hausnummer')}</Label>
             <Input
               id="hausnummer"
               placeholder=""
@@ -150,7 +151,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="plz">Postleitzahl</Label>
+            <Label htmlFor="plz">{tx('Postleitzahl')}</Label>
             <Input
               id="plz"
               placeholder=""
@@ -159,7 +160,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ort">Ort</Label>
+            <Label htmlFor="ort">{tx('Ort')}</Label>
             <Input
               id="ort"
               placeholder=""
@@ -168,7 +169,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="laender">Tätigkeitsländer</Label>
+            <Label htmlFor="laender">{tx('Tätigkeitsländer')}</Label>
             <Input
               id="laender"
               placeholder=""
@@ -177,7 +178,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ansprechpartner_vorname">Vorname Ansprechpartner</Label>
+            <Label htmlFor="ansprechpartner_vorname">{tx('Vorname Ansprechpartner')}</Label>
             <Input
               id="ansprechpartner_vorname"
               placeholder=""
@@ -186,7 +187,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ansprechpartner_nachname">Nachname Ansprechpartner</Label>
+            <Label htmlFor="ansprechpartner_nachname">{tx('Nachname Ansprechpartner')}</Label>
             <Input
               id="ansprechpartner_nachname"
               placeholder=""
@@ -195,7 +196,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ansprechpartner_email">E-Mail Ansprechpartner</Label>
+            <Label htmlFor="ansprechpartner_email">{tx('E-Mail Ansprechpartner')}</Label>
             <Input
               id="ansprechpartner_email"
               type="email"
@@ -205,7 +206,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ansprechpartner_telefon">Telefon Ansprechpartner</Label>
+            <Label htmlFor="ansprechpartner_telefon">{tx('Telefon Ansprechpartner')}</Label>
             <Input
               id="ansprechpartner_telefon"
               value={fields.ansprechpartner_telefon ?? ''}
@@ -213,7 +214,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="steuernummer">Steuernummer / USt-IdNr.</Label>
+            <Label htmlFor="steuernummer">{tx('Steuernummer / USt-IdNr.')}</Label>
             <Input
               id="steuernummer"
               placeholder=""
@@ -222,7 +223,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="epr_registrierungsnummern">EPR-Registrierungsnummern (je Land)</Label>
+            <Label htmlFor="epr_registrierungsnummern">{tx('EPR-Registrierungsnummern (je Land)')}</Label>
             <Textarea
               id="epr_registrierungsnummern"
               placeholder=""
@@ -232,7 +233,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="verantwortlich_vorname">Vorname verantwortliche Person</Label>
+            <Label htmlFor="verantwortlich_vorname">{tx('Vorname verantwortliche Person')}</Label>
             <Input
               id="verantwortlich_vorname"
               placeholder=""
@@ -241,7 +242,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="verantwortlich_nachname">Nachname verantwortliche Person</Label>
+            <Label htmlFor="verantwortlich_nachname">{tx('Nachname verantwortliche Person')}</Label>
             <Input
               id="verantwortlich_nachname"
               placeholder=""
@@ -250,7 +251,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="verantwortlich_funktion">Funktion / Position</Label>
+            <Label htmlFor="verantwortlich_funktion">{tx('Funktion / Position')}</Label>
             <Input
               id="verantwortlich_funktion"
               placeholder=""
@@ -259,7 +260,7 @@ export default function PublicFormUnternehmen() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="verantwortlich_email">E-Mail verantwortliche Person</Label>
+            <Label htmlFor="verantwortlich_email">{tx('E-Mail verantwortliche Person')}</Label>
             <Input
               id="verantwortlich_email"
               type="email"
@@ -283,12 +284,12 @@ export default function PublicFormUnternehmen() {
           )}
 
           <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? 'Wird gesendet...' : 'Absenden'}
+            {submitting ? tx('Wird gesendet...') : tx('Absenden')}
           </Button>
         </form>
 
         <p className="text-xs text-muted-foreground text-center mt-4">
-          Powered by Klar
+          {tx('Powered by Klar')}
         </p>
       </div>
     </div>

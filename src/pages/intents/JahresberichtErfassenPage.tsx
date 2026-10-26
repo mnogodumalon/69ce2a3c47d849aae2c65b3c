@@ -23,6 +23,7 @@ import {
   IconChartBar,
   IconFileReport,
 } from '@tabler/icons-react';
+import { tx } from '@/i18n';
 
 const CURRENT_YEAR = 2026;
 const YEAR_OPTIONS = [CURRENT_YEAR - 3, CURRENT_YEAR - 2, CURRENT_YEAR - 1, CURRENT_YEAR];
@@ -209,7 +210,7 @@ export default function JahresberichtErfassenPage() {
       setSavedSuccess(true);
     } catch (err) {
       console.error('Fehler beim Speichern:', err);
-      alert(err instanceof Error ? err.message : 'Fehler beim Speichern des Berichts');
+      alert(err instanceof Error ? err.message : tx('Fehler beim Speichern des Berichts'));
     } finally {
       setSaving(false);
     }
@@ -247,25 +248,25 @@ export default function JahresberichtErfassenPage() {
     const met = value >= target;
     return met ? (
       <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
-        <IconCheck size={12} stroke={2.5} /> Ziel erreicht
+        <IconCheck size={12} stroke={2.5} /> {tx('Ziel erreicht')}
       </span>
     ) : (
       <span className="inline-flex items-center gap-1 text-xs text-red-500 font-medium">
-        <IconAlertTriangle size={12} /> Unter Ziel
+        <IconAlertTriangle size={12} /> {tx('Unter Ziel')}
       </span>
     );
   }
 
   return (
     <IntentWizardShell
-      title="Jahresbericht erfassen"
-      subtitle="Jährliche Verpackungs-Kennzahlen für ein Unternehmen erfassen"
+      title={tx('Jahresbericht erfassen')}
+      subtitle={tx('Jährliche Verpackungs-Kennzahlen für ein Unternehmen erfassen')}
       steps={[
-        { label: 'Unternehmen' },
-        { label: 'Berichtsjahr' },
-        { label: 'Mengen' },
-        { label: 'Quoten' },
-        { label: 'Abschluss' },
+        { label: tx('Unternehmen') },
+        { label: tx('Berichtsjahr') },
+        { label: tx('Mengen') },
+        { label: tx('Quoten') },
+        { label: tx('Abschluss') },
       ]}
       currentStep={currentStep}
       onStepChange={setCurrentStep}
@@ -277,9 +278,9 @@ export default function JahresberichtErfassenPage() {
       {currentStep === 1 && (
         <div className="space-y-4">
           <div className="rounded-2xl border bg-card p-4 overflow-hidden">
-            <h2 className="font-semibold text-base mb-1">Unternehmen wählen</h2>
+            <h2 className="font-semibold text-base mb-1">{tx('Unternehmen wählen')}</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              Wähle das Unternehmen, für das du den Jahresbericht erfassen möchtest.
+              {tx('Wähle das Unternehmen, für das du den Jahresbericht erfassen möchtest.')}
             </p>
             <EntitySelectStep
               items={unternehmen.map(u => ({
@@ -288,16 +289,16 @@ export default function JahresberichtErfassenPage() {
                 subtitle: [u.fields.ort, u.fields.laender].filter(Boolean).join(' · '),
                 stats: [
                   {
-                    label: 'EPR',
-                    value: u.fields.epr_registrierungsnummern ? 'Registriert' : 'Nicht registriert',
+                    label: tx('EPR'),
+                    value: u.fields.epr_registrierungsnummern ? tx('Registriert') : tx('Nicht registriert'),
                   },
                 ],
                 icon: <IconBuilding size={20} className="text-primary" />,
               }))}
               onSelect={handleSelectUnternehmen}
-              searchPlaceholder="Unternehmen suchen..."
-              emptyText="Kein Unternehmen gefunden."
-              createLabel="Neues Unternehmen anlegen"
+              searchPlaceholder={tx('Unternehmen suchen...')}
+              emptyText={tx('Kein Unternehmen gefunden.')}
+              createLabel={tx('Neues Unternehmen anlegen')}
               onCreateNew={() => setDialogOpen(true)}
               createDialog={
                 <UnternehmenDialog
@@ -321,16 +322,16 @@ export default function JahresberichtErfassenPage() {
         <div className="space-y-4">
           <div className="rounded-2xl border bg-card p-6 overflow-hidden space-y-5">
             <div>
-              <h2 className="font-semibold text-base mb-1">Berichtsjahr & Standort</h2>
+              <h2 className="font-semibold text-base mb-1">{tx('Berichtsjahr & Standort')}</h2>
               {selectedUnternehmen && (
                 <p className="text-sm text-muted-foreground">
-                  Unternehmen: <span className="font-medium text-foreground">{selectedUnternehmen.fields.firmenname}</span>
+                  {tx('Unternehmen:')} <span className="font-medium text-foreground">{selectedUnternehmen.fields.firmenname}</span>
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="berichtsjahr">Berichtsjahr *</Label>
+              <Label htmlFor="berichtsjahr">{tx('Berichtsjahr *')}</Label>
               <select
                 id="berichtsjahr"
                 value={formData.berichtsjahr ?? CURRENT_YEAR}
@@ -344,15 +345,15 @@ export default function JahresberichtErfassenPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="standort">Standort / Niederlassung (optional)</Label>
+              <Label htmlFor="standort">{tx('Standort / Niederlassung (optional)')}</Label>
               <Input
                 id="standort"
-                placeholder="z. B. Werk Berlin, Hauptsitz München..."
+                placeholder={tx('z. B. Werk Berlin, Hauptsitz München...')}
                 value={formData.standort ?? ''}
                 onChange={e => setFormData(prev => ({ ...prev, standort: e.target.value || undefined }))}
               />
               <p className="text-xs text-muted-foreground">
-                Leer lassen, wenn der Bericht das gesamte Unternehmen abdeckt.
+                {tx('Leer lassen, wenn der Bericht das gesamte Unternehmen abdeckt.')}
               </p>
             </div>
 
@@ -361,10 +362,10 @@ export default function JahresberichtErfassenPage() {
                 <IconAlertTriangle size={18} className="text-yellow-600 shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
-                    Bericht für {formData.berichtsjahr} existiert bereits
+                    {tx('Bericht für')} {formData.berichtsjahr} {tx('existiert bereits')}
                   </p>
                   <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
-                    Für dieses Jahr existiert bereits ein Bericht. Möchtest du einen neuen anlegen?
+                    {tx('Für dieses Jahr existiert bereits ein Bericht. Möchtest du einen neuen anlegen?')}
                   </p>
                 </div>
               </div>
@@ -373,13 +374,13 @@ export default function JahresberichtErfassenPage() {
 
           <div className="flex justify-between gap-3">
             <Button variant="outline" onClick={() => setCurrentStep(1)}>
-              <IconArrowLeft size={16} className="mr-2" /> Zurück
+              <IconArrowLeft size={16} className="mr-2" /> {tx('Zurück')}
             </Button>
             <Button
               onClick={handleStep2Next}
               disabled={!formData.berichtsjahr}
             >
-              Weiter <IconArrowRight size={16} className="ml-2" />
+              {tx('Weiter')} <IconArrowRight size={16} className="ml-2" />
             </Button>
           </div>
         </div>
@@ -390,14 +391,14 @@ export default function JahresberichtErfassenPage() {
         <div className="space-y-4">
           <div className="rounded-2xl border bg-card p-6 overflow-hidden space-y-5">
             <div>
-              <h2 className="font-semibold text-base mb-1">Verpackungsmengen (kg)</h2>
+              <h2 className="font-semibold text-base mb-1">{tx('Verpackungsmengen (kg)')}</h2>
               <p className="text-sm text-muted-foreground">
-                Gib die in {formData.berichtsjahr} in Verkehr gebrachten Verpackungsmengen ein.
+                {tx('Gib die in')} {formData.berichtsjahr} {tx('in Verkehr gebrachten Verpackungsmengen ein.')}
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="gesamtmenge_kg">Gesamtmenge (kg) *</Label>
+              <Label htmlFor="gesamtmenge_kg">{tx('Gesamtmenge (kg) *')}</Label>
               {numInput(formData.gesamtmenge_kg, v =>
                 setFormData(prev => ({ ...prev, gesamtmenge_kg: v }))
               )}
@@ -405,31 +406,31 @@ export default function JahresberichtErfassenPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="menge_kunststoff_kg">Kunststoff (kg)</Label>
+                <Label htmlFor="menge_kunststoff_kg">{tx('Kunststoff (kg)')}</Label>
                 {numInput(formData.menge_kunststoff_kg, v =>
                   setFormData(prev => ({ ...prev, menge_kunststoff_kg: v }))
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="menge_papier_pappe_kg">Papier/Pappe (kg)</Label>
+                <Label htmlFor="menge_papier_pappe_kg">{tx('Papier/Pappe (kg)')}</Label>
                 {numInput(formData.menge_papier_pappe_kg, v =>
                   setFormData(prev => ({ ...prev, menge_papier_pappe_kg: v }))
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="menge_glas_kg">Glas (kg)</Label>
+                <Label htmlFor="menge_glas_kg">{tx('Glas (kg)')}</Label>
                 {numInput(formData.menge_glas_kg, v =>
                   setFormData(prev => ({ ...prev, menge_glas_kg: v }))
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="menge_metall_kg">Metall (kg)</Label>
+                <Label htmlFor="menge_metall_kg">{tx('Metall (kg)')}</Label>
                 {numInput(formData.menge_metall_kg, v =>
                   setFormData(prev => ({ ...prev, menge_metall_kg: v }))
                 )}
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="menge_verbund_kg">Verbund/Sonstiges (kg)</Label>
+                <Label htmlFor="menge_verbund_kg">{tx('Verbund/Sonstiges (kg)')}</Label>
                 {numInput(formData.menge_verbund_kg, v =>
                   setFormData(prev => ({ ...prev, menge_verbund_kg: v }))
                 )}
@@ -441,7 +442,7 @@ export default function JahresberichtErfassenPage() {
               <div className="rounded-xl border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20 p-3 flex gap-2">
                 <IconAlertTriangle size={16} className="text-yellow-600 shrink-0 mt-0.5" />
                 <p className="text-sm text-yellow-800 dark:text-yellow-300">
-                  Summe der Materialkategorien ({materialSum.toLocaleString('de-DE')} kg) übersteigt die Gesamtmenge ({gesamtmenge.toLocaleString('de-DE')} kg).
+                  {tx('Summe der Materialkategorien (')}{materialSum.toLocaleString('de-DE')} {tx('kg) übersteigt die Gesamtmenge (')}{gesamtmenge.toLocaleString('de-DE')} {tx('kg).')}
                 </p>
               </div>
             )}
@@ -449,13 +450,13 @@ export default function JahresberichtErfassenPage() {
             {/* Material breakdown visualization */}
             {gesamtmenge > 0 && materialSum > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Materialaufteilung</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{tx('Materialaufteilung')}</p>
                 {[
-                  { label: 'Kunststoff', value: formData.menge_kunststoff_kg ?? 0, color: 'bg-blue-400' },
-                  { label: 'Papier/Pappe', value: formData.menge_papier_pappe_kg ?? 0, color: 'bg-amber-400' },
-                  { label: 'Glas', value: formData.menge_glas_kg ?? 0, color: 'bg-cyan-400' },
-                  { label: 'Metall', value: formData.menge_metall_kg ?? 0, color: 'bg-slate-400' },
-                  { label: 'Verbund/Sonstiges', value: formData.menge_verbund_kg ?? 0, color: 'bg-purple-400' },
+                  { label: tx('Kunststoff'), value: formData.menge_kunststoff_kg ?? 0, color: 'bg-blue-400' },
+                  { label: tx('Papier/Pappe'), value: formData.menge_papier_pappe_kg ?? 0, color: 'bg-amber-400' },
+                  { label: tx('Glas'), value: formData.menge_glas_kg ?? 0, color: 'bg-cyan-400' },
+                  { label: tx('Metall'), value: formData.menge_metall_kg ?? 0, color: 'bg-slate-400' },
+                  { label: tx('Verbund/Sonstiges'), value: formData.menge_verbund_kg ?? 0, color: 'bg-purple-400' },
                 ].filter(m => m.value > 0).map(m => (
                   <div key={m.label} className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground w-28 shrink-0 truncate">{m.label}</span>
@@ -466,7 +467,7 @@ export default function JahresberichtErfassenPage() {
                       />
                     </div>
                     <span className="text-xs text-muted-foreground w-20 text-right shrink-0">
-                      {m.value.toLocaleString('de-DE')} kg
+                      {m.value.toLocaleString('de-DE')} {tx('kg')}
                     </span>
                   </div>
                 ))}
@@ -476,13 +477,13 @@ export default function JahresberichtErfassenPage() {
 
           <div className="flex justify-between gap-3">
             <Button variant="outline" onClick={() => setCurrentStep(2)}>
-              <IconArrowLeft size={16} className="mr-2" /> Zurück
+              <IconArrowLeft size={16} className="mr-2" /> {tx('Zurück')}
             </Button>
             <Button
               onClick={handleStep3Next}
               disabled={!formData.gesamtmenge_kg || formData.gesamtmenge_kg <= 0}
             >
-              Weiter <IconArrowRight size={16} className="ml-2" />
+              {tx('Weiter')} <IconArrowRight size={16} className="ml-2" />
             </Button>
           </div>
         </div>
@@ -493,18 +494,18 @@ export default function JahresberichtErfassenPage() {
         <div className="space-y-4">
           <div className="rounded-2xl border bg-card p-6 overflow-hidden space-y-5">
             <div>
-              <h2 className="font-semibold text-base mb-1">Recycling- & Mehrwegquoten</h2>
+              <h2 className="font-semibold text-base mb-1">{tx('Recycling- & Mehrwegquoten')}</h2>
               <p className="text-sm text-muted-foreground">
-                Gib die Recycling- und Mehrwegquoten für {formData.berichtsjahr} ein. Alle Felder sind optional.
+                {tx('Gib die Recycling- und Mehrwegquoten für')} {formData.berichtsjahr} {tx('ein. Alle Felder sind optional.')}
               </p>
             </div>
 
             {/* Rezyklatanteile */}
             <div className="space-y-4">
-              <p className="text-sm font-medium">Rezyklatanteile</p>
+              <p className="text-sm font-medium">{tx('Rezyklatanteile')}</p>
 
               <div className="space-y-2">
-                <Label htmlFor="rezyklatanteil_gesamt_prozent">Rezyklatanteil gesamt (%)</Label>
+                <Label htmlFor="rezyklatanteil_gesamt_prozent">{tx('Rezyklatanteil gesamt (%)')}</Label>
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
                     {numInput(formData.rezyklatanteil_gesamt_prozent, v =>
@@ -513,12 +514,12 @@ export default function JahresberichtErfassenPage() {
                   </div>
                   {ppwrIndicator(formData.rezyklatanteil_gesamt_prozent, 30)}
                 </div>
-                <p className="text-xs text-muted-foreground">PPWR-Ziel: ≥ 30 %</p>
+                <p className="text-xs text-muted-foreground">{tx('PPWR-Ziel: ≥ 30 %')}</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="rezyklatanteil_kunststoff_prozent">Rezyklatanteil Kunststoff (%)</Label>
+                  <Label htmlFor="rezyklatanteil_kunststoff_prozent">{tx('Rezyklatanteil Kunststoff (%)')}</Label>
                   <div className="flex items-center gap-2">
                     <div className="flex-1">
                       {numInput(formData.rezyklatanteil_kunststoff_prozent, v =>
@@ -527,22 +528,22 @@ export default function JahresberichtErfassenPage() {
                     </div>
                     {ppwrIndicator(formData.rezyklatanteil_kunststoff_prozent, 30)}
                   </div>
-                  <p className="text-xs text-muted-foreground">PPWR-Ziel Kunststoff: ≥ 30 %</p>
+                  <p className="text-xs text-muted-foreground">{tx('PPWR-Ziel Kunststoff: ≥ 30 %')}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="rezyklatanteil_papier_prozent">Rezyklatanteil Papier/Pappe (%)</Label>
+                  <Label htmlFor="rezyklatanteil_papier_prozent">{tx('Rezyklatanteil Papier/Pappe (%)')}</Label>
                   {numInput(formData.rezyklatanteil_papier_prozent, v =>
                     setFormData(prev => ({ ...prev, rezyklatanteil_papier_prozent: v }))
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="rezyklatanteil_glas_prozent">Rezyklatanteil Glas (%)</Label>
+                  <Label htmlFor="rezyklatanteil_glas_prozent">{tx('Rezyklatanteil Glas (%)')}</Label>
                   {numInput(formData.rezyklatanteil_glas_prozent, v =>
                     setFormData(prev => ({ ...prev, rezyklatanteil_glas_prozent: v }))
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="rezyklatanteil_metall_prozent">Rezyklatanteil Metall (%)</Label>
+                  <Label htmlFor="rezyklatanteil_metall_prozent">{tx('Rezyklatanteil Metall (%)')}</Label>
                   {numInput(formData.rezyklatanteil_metall_prozent, v =>
                     setFormData(prev => ({ ...prev, rezyklatanteil_metall_prozent: v }))
                   )}
@@ -552,10 +553,10 @@ export default function JahresberichtErfassenPage() {
 
             {/* Mehrweg & Recyclingfähigkeit */}
             <div className="space-y-4">
-              <p className="text-sm font-medium">Mehrweg & Recyclingfähigkeit</p>
+              <p className="text-sm font-medium">{tx('Mehrweg & Recyclingfähigkeit')}</p>
 
               <div className="space-y-2">
-                <Label htmlFor="mehrwegquote_prozent">Mehrwegquote (%)</Label>
+                <Label htmlFor="mehrwegquote_prozent">{tx('Mehrwegquote (%)')}</Label>
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
                     {numInput(formData.mehrwegquote_prozent, v =>
@@ -564,11 +565,11 @@ export default function JahresberichtErfassenPage() {
                   </div>
                   {ppwrIndicator(formData.mehrwegquote_prozent, 10)}
                 </div>
-                <p className="text-xs text-muted-foreground">PPWR-Ziel: ≥ 10 %</p>
+                <p className="text-xs text-muted-foreground">{tx('PPWR-Ziel: ≥ 10 %')}</p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="recyclingfaehigkeitsquote_prozent">Recyclingfähigkeitsquote (%)</Label>
+                <Label htmlFor="recyclingfaehigkeitsquote_prozent">{tx('Recyclingfähigkeitsquote (%)')}</Label>
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
                     {numInput(formData.recyclingfaehigkeitsquote_prozent, v =>
@@ -577,16 +578,16 @@ export default function JahresberichtErfassenPage() {
                   </div>
                   {ppwrIndicator(formData.recyclingfaehigkeitsquote_prozent, 70)}
                 </div>
-                <p className="text-xs text-muted-foreground">PPWR-Ziel: ≥ 70 %</p>
+                <p className="text-xs text-muted-foreground">{tx('PPWR-Ziel: ≥ 70 %')}</p>
               </div>
             </div>
 
             {/* Hinweise */}
             <div className="space-y-2">
-              <Label htmlFor="kpi_hinweise">Hinweise / Anmerkungen (optional)</Label>
+              <Label htmlFor="kpi_hinweise">{tx('Hinweise / Anmerkungen (optional)')}</Label>
               <Textarea
                 id="kpi_hinweise"
-                placeholder="Methodische Hinweise, Datenquellen, Besonderheiten..."
+                placeholder={tx('Methodische Hinweise, Datenquellen, Besonderheiten...')}
                 value={formData.kpi_hinweise ?? ''}
                 onChange={e => setFormData(prev => ({ ...prev, kpi_hinweise: e.target.value || undefined }))}
                 rows={3}
@@ -596,10 +597,10 @@ export default function JahresberichtErfassenPage() {
 
           <div className="flex justify-between gap-3">
             <Button variant="outline" onClick={() => setCurrentStep(3)}>
-              <IconArrowLeft size={16} className="mr-2" /> Zurück
+              <IconArrowLeft size={16} className="mr-2" /> {tx('Zurück')}
             </Button>
             <Button onClick={handleStep4Next}>
-              Weiter <IconArrowRight size={16} className="ml-2" />
+              {tx('Weiter')} <IconArrowRight size={16} className="ml-2" />
             </Button>
           </div>
         </div>
@@ -612,17 +613,17 @@ export default function JahresberichtErfassenPage() {
           <div className="rounded-2xl border bg-card p-6 overflow-hidden space-y-4">
             <div className="flex items-center gap-2">
               <IconChartBar size={18} className="text-primary" />
-              <h2 className="font-semibold text-base">Compliance-Übersicht</h2>
+              <h2 className="font-semibold text-base">{tx('Compliance-Übersicht')}</h2>
             </div>
             <p className="text-sm text-muted-foreground">
-              Automatisch aus dem aktuellen Regelstatus der Verpackungstypen berechnet. Du kannst die Werte anpassen.
+              {tx('Automatisch aus dem aktuellen Regelstatus der Verpackungstypen berechnet. Du kannst die Werte anpassen.')}
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {/* Total */}
               <div className="rounded-xl border bg-secondary/40 p-4 text-center">
                 <p className="text-2xl font-bold text-foreground">{counts.total}</p>
-                <p className="text-xs text-muted-foreground mt-1">Verpackungstypen</p>
+                <p className="text-xs text-muted-foreground mt-1">{tx('Verpackungstypen')}</p>
                 <div className="flex items-center justify-center gap-1 mt-2">
                   <Button
                     variant="outline"
@@ -642,7 +643,7 @@ export default function JahresberichtErfassenPage() {
               {/* Konform */}
               <div className="rounded-xl border border-green-200 bg-green-50 dark:bg-green-950/20 p-4 text-center">
                 <p className="text-2xl font-bold text-green-700 dark:text-green-400">{counts.konform}</p>
-                <p className="text-xs text-green-600 dark:text-green-500 mt-1">Konform</p>
+                <p className="text-xs text-green-600 dark:text-green-500 mt-1">{tx('Konform')}</p>
                 <div className="flex items-center justify-center gap-1 mt-2">
                   <Button
                     variant="outline"
@@ -662,7 +663,7 @@ export default function JahresberichtErfassenPage() {
               {/* Kritisch */}
               <div className="rounded-xl border border-yellow-200 bg-yellow-50 dark:bg-yellow-950/20 p-4 text-center">
                 <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-400">{counts.kritisch}</p>
-                <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-1">Kritisch</p>
+                <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-1">{tx('Kritisch')}</p>
                 <div className="flex items-center justify-center gap-1 mt-2">
                   <Button
                     variant="outline"
@@ -682,7 +683,7 @@ export default function JahresberichtErfassenPage() {
               {/* Nicht konform */}
               <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 p-4 text-center">
                 <p className="text-2xl font-bold text-red-700 dark:text-red-400">{counts.nichtKonform}</p>
-                <p className="text-xs text-red-600 dark:text-red-500 mt-1">Nicht konform</p>
+                <p className="text-xs text-red-600 dark:text-red-500 mt-1">{tx('Nicht konform')}</p>
                 <div className="flex items-center justify-center gap-1 mt-2">
                   <Button
                     variant="outline"
@@ -705,42 +706,42 @@ export default function JahresberichtErfassenPage() {
           <div className="rounded-2xl border bg-card p-6 overflow-hidden space-y-3">
             <div className="flex items-center gap-2">
               <IconFileReport size={18} className="text-primary" />
-              <h2 className="font-semibold text-base">Zusammenfassung des Berichts</h2>
+              <h2 className="font-semibold text-base">{tx('Zusammenfassung des Berichts')}</h2>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
               <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted-foreground">Unternehmen</span>
+                <span className="text-muted-foreground">{tx('Unternehmen')}</span>
                 <span className="font-medium truncate ml-4">{selectedUnternehmen?.fields.firmenname ?? '—'}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted-foreground">Berichtsjahr</span>
+                <span className="text-muted-foreground">{tx('Berichtsjahr')}</span>
                 <span className="font-medium">{formData.berichtsjahr}</span>
               </div>
               {formData.standort && (
                 <div className="flex justify-between py-1 border-b border-border/50">
-                  <span className="text-muted-foreground">Standort</span>
+                  <span className="text-muted-foreground">{tx('Standort')}</span>
                   <span className="font-medium truncate ml-4">{formData.standort}</span>
                 </div>
               )}
               <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted-foreground">Gesamtmenge</span>
-                <span className="font-medium">{(formData.gesamtmenge_kg ?? 0).toLocaleString('de-DE')} kg</span>
+                <span className="text-muted-foreground">{tx('Gesamtmenge')}</span>
+                <span className="font-medium">{(formData.gesamtmenge_kg ?? 0).toLocaleString('de-DE')} {tx('kg')}</span>
               </div>
               {formData.rezyklatanteil_gesamt_prozent !== undefined && (
                 <div className="flex justify-between py-1 border-b border-border/50">
-                  <span className="text-muted-foreground">Rezyklatanteil</span>
+                  <span className="text-muted-foreground">{tx('Rezyklatanteil')}</span>
                   <span className="font-medium">{formData.rezyklatanteil_gesamt_prozent} %</span>
                 </div>
               )}
               {formData.mehrwegquote_prozent !== undefined && (
                 <div className="flex justify-between py-1 border-b border-border/50">
-                  <span className="text-muted-foreground">Mehrwegquote</span>
+                  <span className="text-muted-foreground">{tx('Mehrwegquote')}</span>
                   <span className="font-medium">{formData.mehrwegquote_prozent} %</span>
                 </div>
               )}
               {formData.recyclingfaehigkeitsquote_prozent !== undefined && (
                 <div className="flex justify-between py-1 border-b border-border/50">
-                  <span className="text-muted-foreground">Recyclingfähigkeitsquote</span>
+                  <span className="text-muted-foreground">{tx('Recyclingfähigkeitsquote')}</span>
                   <span className="font-medium">{formData.recyclingfaehigkeitsquote_prozent} %</span>
                 </div>
               )}
@@ -749,16 +750,16 @@ export default function JahresberichtErfassenPage() {
 
           <div className="flex justify-between gap-3">
             <Button variant="outline" onClick={() => setCurrentStep(4)}>
-              <IconArrowLeft size={16} className="mr-2" /> Zurück
+              <IconArrowLeft size={16} className="mr-2" /> {tx('Zurück')}
             </Button>
             <Button onClick={handleSave} disabled={saving} className="min-w-40">
               {saving ? (
                 <>
-                  <IconLoader2 size={16} className="mr-2 animate-spin" /> Wird gespeichert...
+                  <IconLoader2 size={16} className="mr-2 animate-spin" /> {tx('Wird gespeichert...')}
                 </>
               ) : (
                 <>
-                  <IconCheck size={16} className="mr-2" /> Bericht speichern
+                  <IconCheck size={16} className="mr-2" /> {tx('Bericht speichern')}
                 </>
               )}
             </Button>
@@ -774,26 +775,26 @@ export default function JahresberichtErfassenPage() {
               <IconCircleCheck size={32} className="text-green-600 dark:text-green-400" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-foreground">Bericht gespeichert!</h2>
+              <h2 className="text-xl font-bold text-foreground">{tx('Bericht gespeichert!')}</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Der Jahresbericht {formData.berichtsjahr} für{' '}
+                {tx('Der Jahresbericht')} {formData.berichtsjahr} {tx('für')}{' '}
                 <span className="font-medium text-foreground">{selectedUnternehmen?.fields.firmenname}</span>{' '}
-                wurde erfolgreich gespeichert.
+                {tx('wurde erfolgreich gespeichert.')}
               </p>
             </div>
 
             {/* Quick summary */}
             <div className="rounded-xl bg-muted/40 p-4 text-left space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Gesamtmenge</span>
-                <span className="font-medium">{(formData.gesamtmenge_kg ?? 0).toLocaleString('de-DE')} kg</span>
+                <span className="text-muted-foreground">{tx('Gesamtmenge')}</span>
+                <span className="font-medium">{(formData.gesamtmenge_kg ?? 0).toLocaleString('de-DE')} {tx('kg')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Verpackungstypen gesamt</span>
+                <span className="text-muted-foreground">{tx('Verpackungstypen gesamt')}</span>
                 <span className="font-medium">{counts.total}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Konform / Kritisch / Nicht konform</span>
+                <span className="text-muted-foreground">{tx('Konform / Kritisch / Nicht konform')}</span>
                 <span className="font-medium">
                   <span className="text-green-600">{counts.konform}</span>
                   {' / '}
@@ -806,16 +807,16 @@ export default function JahresberichtErfassenPage() {
 
             <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
               <Button variant="outline" onClick={handleReset} className="w-full sm:w-auto">
-                Neuen Bericht anlegen
+                {tx('Neuen Bericht anlegen')}
               </Button>
               <a href="#/" className="inline-flex">
                 <Button variant="outline" className="w-full sm:w-auto">
-                  Zur Übersicht
+                  {tx('Zur Übersicht')}
                 </Button>
               </a>
               <a href="#/kennzahlen" className="inline-flex">
                 <Button className="w-full sm:w-auto">
-                  Kennzahlen anzeigen
+                  {tx('Kennzahlen anzeigen')}
                 </Button>
               </a>
             </div>

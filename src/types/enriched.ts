@@ -4,12 +4,12 @@ export type EnrichedVerpackungstypen = Verpackungstypen & {
   unternehmen_refName: string;
 };
 
-export type EnrichedNachweise = Nachweise & {
-  verpackungstyp_refName: string;
-};
-
 export type EnrichedRegelstatus = Regelstatus & {
   verpackungstyp_status_refName: string;
+};
+
+export type EnrichedNachweise = Nachweise & {
+  verpackungstyp_refName: string;
 };
 
 export type EnrichedKennzahlen = Kennzahlen & {
