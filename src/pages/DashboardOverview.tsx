@@ -486,7 +486,7 @@ export default function DashboardOverview() {
         }}
         defaultValues={
           nachweiseDialog.verpackungId
-            ? { verpackungstyp_ref: createRecordUrl(APP_IDS.NACHWEISE, nachweiseDialog.verpackungId) }
+            ? { verpackungstyp_ref: createRecordUrl(APP_IDS.VERPACKUNGSTYPEN, nachweiseDialog.verpackungId) }
             : undefined
         }
         verpackungstypenList={verpackungstypen}

@@ -1,6 +1,6 @@
 // AUTOMATICALLY GENERATED SERVICE
 import { APP_IDS, LOOKUP_OPTIONS, FIELD_TYPES } from '@/types/app';
-import type { Unternehmen, Verpackungstypen, Nachweise, Regelstatus, Kennzahlen, CreateUnternehmen, CreateVerpackungstypen, CreateNachweise, CreateRegelstatus, CreateKennzahlen } from '@/types/app';
+import type { Unternehmen, Verpackungstypen, Nachweise, Regelstatus, Kennzahlen, CreateUnternehmen, CreateVerpackungstypen, CreateNachweise, CreateRegelstatus, CreateKennzahlen, Attachment, AttachmentInput } from '@/types/app';
 
 // Base Configuration
 const API_BASE_URL = 'https://my.living-apps.de/rest';
@@ -48,6 +48,19 @@ export async function uploadFile(file: File | Blob, filename?: string): Promise<
   }
   const data = await res.json();
   return data.url;
+}
+
+export async function getRecordAttachments(appId: string, recordId: string): Promise<Attachment[]> {
+  const data = await callApi('GET', `/apps/${appId}/records/${recordId}/attachments`);
+  return Array.isArray(data) ? data : Object.values(data ?? {}) as Attachment[];
+}
+
+export async function createRecordAttachment(appId: string, recordId: string, input: AttachmentInput): Promise<Attachment> {
+  return callApi('POST', `/apps/${appId}/records/${recordId}/attachments`, input);
+}
+
+export async function deleteRecordAttachment(appId: string, recordId: string, attachmentId: string): Promise<void> {
+  await callApi('DELETE', `/apps/${appId}/records/${recordId}/attachments/${attachmentId}`);
 }
 
 function enrichLookupFields<T extends { fields: Record<string, unknown> }>(
